@@ -23,7 +23,7 @@
 -->
 <meta http-equiv="Content-Security-Policy" content="
   default-src 'self';
-  script-src 'self' https://cdnjs.cloudflare.com 'sha256-owFBbsN0DO2qVybTAtCaxpL9/b/FcFDaPLVfIvf9gS4=' 'sha256-kW+rtVzNXm+sKdyPJoGq4ZsDV5dBfAnIhWh8G1wif+k=';
+  script-src 'self' https://cdnjs.cloudflare.com 'sha256-Xjcf2oDTxhS0nrI6m8KAA7IDkt1sOvfI9dBQRL0ff5M=' 'sha256-kW+rtVzNXm+sKdyPJoGq4ZsDV5dBfAnIhWh8G1wif+k=';
   style-src 'self' 'unsafe-inline';
   img-src 'self' data:;
   font-src 'self';
@@ -767,7 +767,7 @@
   // (Ctrl/Cmd+Shift+R) or clear the Service Worker/cache in devtools,
   // rather than assuming the deploy didn't work.
   // ---------------------------------------------------------------------
-  const APP_VERSION = 'v8';
+  const APP_VERSION = 'v10';
   const APP_VERSION_DATE = '2026-08-08';
 
   // Set immediately (not gated behind unlock) so the badge is visible on
@@ -1060,15 +1060,36 @@
   }
 
   // ---------------------------------------------------------------------
-  // Optional biometric unlock (Face ID / Touch ID / Android fingerprint),
-  // via the WebAuthn PRF extension. This is a convenience layer only: it
-  // works by using a biometric-gated symmetric key (derived from the
-  // platform authenticator's PRF output) to encrypt-and-store the *actual
-  // passcode*, then decrypts it on future unlocks and feeds it through the
-  // normal tryUnlock() path. The passcode itself always remains the
-  // required fallback/recovery mechanism.
-  // Support: Android Chrome (broad), iOS/Safari 18+ (iCloud Keychain
-  // passkeys). Not supported: Firefox, older iOS/Safari.
+  // Optional biometric unlock (Face ID / Touch ID / Android fingerprint).
+  // Dual-mode, decided once per enrollment:
+  //
+  //   1. PRF mode (preferred): the wrapping key is derived directly from
+  //      the WebAuthn PRF extension output, so the key is cryptographically
+  //      bound to the biometric result itself.
+  //   2. Gate mode (fallback): the fingerprint/Face prompt is only a UX
+  //      gate. A separate, randomly generated, NON-EXTRACTABLE AES-GCM key
+  //      wraps the *actual passcode*; that wrapping key is stored as a real
+  //      CryptoKey object (not exported bytes) via IndexedDB's structured
+  //      clone, so page JS can use it to decrypt again later but can never
+  //      read it out as raw bytes.
+  //
+  // PRF support is inconsistent across Android/Chrome versions/OEMs — on
+  // some real devices `navigator.credentials.create()` with a `prf`
+  // extension request fails outright, and on others `create()` succeeds but
+  // never actually returns usable PRF output. enableBiometricUnlock() tries
+  // PRF first and silently falls back to gate mode whenever either of those
+  // happens, so enrollment succeeds either way. Which mode was used is
+  // recorded in the stored record and tryBiometricUnlock() branches on it.
+  // In both modes the passcode itself always remains the required
+  // fallback/recovery mechanism.
+  //
+  // Because gate mode's wrapping key is a real (non-JSON-serializable)
+  // CryptoKey object, this whole feature only works on the 'idb' local
+  // backend (raw IndexedDB) — not the Claude.ai window.storage bridge or
+  // the localStorage fallback, both of which only accept strings. In
+  // practice that's not a real limitation: WebAuthn platform authenticators
+  // only work over https/localhost on a real device anyway, which is
+  // exactly the standalone-deploy 'idb' scenario.
   // ---------------------------------------------------------------------
   const BIO_META_KEY = 'border-ledger:biometric-unlock';
 
@@ -1077,11 +1098,27 @@
   }
   async function biometricPlatformAvailable(){
     if(!biometricSupported()) return false;
+    if(!idbDB) return false; // needs raw IndexedDB to store the CryptoKey object — see note above
     try{ return await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable(); }
     catch(e){ return false; }
   }
+
   async function deriveAesKeyFromPrfBytes(bytes){
     return crypto.subtle.importKey('raw', bytes, { name:'AES-GCM' }, false, ['encrypt','decrypt']);
+  }
+
+  function biometricCreateOptions(withPrf, salt){
+    const opts = {
+      challenge: randomBytes(32),
+      rp: { name: '关口记录簿' },
+      user: { id: randomBytes(16), name: 'border-ledger-local', displayName: '关口记录簿本机解锁' },
+      pubKeyCredParams: [{ type:'public-key', alg:-7 }, { type:'public-key', alg:-257 }],
+      authenticatorSelection: { authenticatorAttachment:'platform', userVerification:'required' },
+      timeout: 60000,
+      attestation: 'none'
+    };
+    if(withPrf) opts.extensions = { prf: { eval: { first: salt } } };
+    return opts;
   }
 
   async function enableBiometricUnlock(currentPasscode){
@@ -1089,99 +1126,153 @@
       alert('这台设备/浏览器不支持指纹或 Face ID 解锁。');
       return false;
     }
+
     const salt = randomBytes(32);
-    let cred;
+    let cred = null;
+    let prfRequested = true;
+
+    // Attempt 1: register with the PRF extension requested — the stronger
+    // binding, key is derived straight from the biometric result.
     try{
-      cred = await navigator.credentials.create({
-        publicKey: {
-          challenge: randomBytes(32),
-          rp: { name: '关口记录簿' },
-          user: { id: randomBytes(16), name: 'border-ledger-local', displayName: '关口记录簿本机解锁' },
-          pubKeyCredParams: [{ type:'public-key', alg:-7 }, { type:'public-key', alg:-257 }],
-          authenticatorSelection: { authenticatorAttachment:'platform', userVerification:'required', residentKey:'preferred' },
-          timeout: 60000,
-          extensions: { prf: { eval: { first: salt } } }
-        }
-      });
+      cred = await navigator.credentials.create({ publicKey: biometricCreateOptions(true, salt) });
     }catch(e){
-      console.error('[border-ledger] biometric registration failed', e);
-      alert('设置指纹/Face ID 解锁失败（可能被取消或设备不支持），请重试。');
-      return false;
+      console.warn('[border-ledger] biometric registration with PRF failed, retrying without PRF', e);
+      prfRequested = false;
     }
 
-    let prfBytes = null;
-    const ext = cred.getClientExtensionResults();
-    if(ext && ext.prf && ext.prf.results && ext.prf.results.first){
-      prfBytes = ext.prf.results.first;
-    } else {
-      // some platforms only surface the PRF output on a follow-up assertion
+    // Attempt 2 (fallback): some devices reject credentials.create() outright
+    // the instant a `prf` extension is requested. If that happened, retry
+    // the exact same registration without asking for PRF at all.
+    if(!cred){
       try{
-        const assertion = await navigator.credentials.get({
-          publicKey: {
-            challenge: randomBytes(32),
-            allowCredentials: [{ id: cred.rawId, type:'public-key' }],
-            userVerification: 'required',
-            extensions: { prf: { eval: { first: salt } } }
-          }
-        });
-        const aext = assertion.getClientExtensionResults();
-        prfBytes = aext && aext.prf && aext.prf.results && aext.prf.results.first;
-      }catch(e){ /* leave prfBytes null */ }
+        cred = await navigator.credentials.create({ publicKey: biometricCreateOptions(false, salt) });
+      }catch(e2){
+        console.error('[border-ledger] biometric registration failed', e2);
+        alert('设置指纹/Face ID 解锁失败（可能被取消或设备不支持），请重试。');
+        return false;
+      }
     }
 
-    if(!prfBytes){
-      alert('这台设备的浏览器暂不支持所需的加密扩展（PRF），无法启用指纹/Face ID 解锁。');
-      return false;
+    // Figure out whether we actually got usable PRF output. It can come
+    // back immediately on create(), or only on a follow-up get() on some
+    // platforms — and on others it never comes back at all.
+    let prfBytes = null;
+    if(prfRequested){
+      const ext = cred.getClientExtensionResults();
+      if(ext && ext.prf && ext.prf.results && ext.prf.results.first){
+        prfBytes = ext.prf.results.first;
+      } else {
+        try{
+          const assertion = await navigator.credentials.get({
+            publicKey: {
+              challenge: randomBytes(32),
+              allowCredentials: [{ id: cred.rawId, type:'public-key' }],
+              userVerification: 'required',
+              extensions: { prf: { eval: { first: salt } } }
+            }
+          });
+          const aext = assertion.getClientExtensionResults();
+          prfBytes = aext && aext.prf && aext.prf.results && aext.prf.results.first;
+        }catch(e3){ /* leave prfBytes null — falls through to gate mode below */ }
+      }
     }
 
-    const bioKey = await deriveAesKeyFromPrfBytes(prfBytes);
     const iv = randomBytes(12);
-    const ctBuf = await crypto.subtle.encrypt({ name:'AES-GCM', iv }, bioKey, new TextEncoder().encode(currentPasscode));
-    await rawStorage.set(BIO_META_KEY, JSON.stringify({
-      v: 1,
-      credentialId: bufToB64(cred.rawId),
-      salt: bufToB64(salt),
-      iv: bufToB64(iv),
-      ct: bufToB64(ctBuf)
-    }), false);
+
+    if(prfBytes){
+      const bioKey = await deriveAesKeyFromPrfBytes(prfBytes);
+      const ctBuf = await crypto.subtle.encrypt({ name:'AES-GCM', iv }, bioKey, new TextEncoder().encode(currentPasscode));
+      await idbSet(BIO_META_KEY, {
+        v: 3,
+        method: 'prf',
+        credentialId: bufToB64(cred.rawId),
+        salt: bufToB64(salt),
+        iv: bufToB64(iv),
+        ct: bufToB64(ctBuf)
+      });
+    } else {
+      const wrappingKey = await crypto.subtle.generateKey({ name:'AES-GCM', length:256 }, false, ['encrypt','decrypt']);
+      const ctBuf = await crypto.subtle.encrypt({ name:'AES-GCM', iv }, wrappingKey, new TextEncoder().encode(currentPasscode));
+      await idbSet(BIO_META_KEY, {
+        v: 3,
+        method: 'gate',
+        credentialId: bufToB64(cred.rawId),
+        wrappingKey,
+        iv: bufToB64(iv),
+        ct: bufToB64(ctBuf)
+      });
+    }
     return true;
   }
 
   async function disableBiometricUnlock(){
-    await rawStorage.delete(BIO_META_KEY, false).catch(()=>{});
+    if(!idbDB) return;
+    await idbDelete(BIO_META_KEY).catch(()=>{});
   }
 
   // returns true on success (also sets sessionKey via tryUnlock); false on
   // any failure/cancellation — caller should fall back to the passcode field
   async function tryBiometricUnlock(){
-    const rec = await rawStorage.get(BIO_META_KEY, false).catch(()=>null);
+    if(!idbDB) return false;
+    const rec = await idbGet(BIO_META_KEY).catch(()=>null);
     if(!rec) return false;
-    let meta;
-    try{ meta = JSON.parse(rec.value); }catch(e){ return false; }
+    // v1/v2 records predate the method field — infer from shape so existing
+    // enrollments (created by earlier app versions) keep working.
+    const method = rec.method || (rec.wrappingKey ? 'gate' : (rec.salt ? 'prf' : null));
+    if(!method) return false;
 
-    let assertion;
+    if(method === 'prf'){
+      let assertion;
+      try{
+        assertion = await navigator.credentials.get({
+          publicKey: {
+            challenge: randomBytes(32),
+            allowCredentials: [{ id: b64ToBuf(rec.credentialId), type:'public-key' }],
+            userVerification: 'required',
+            timeout: 60000,
+            extensions: { prf: { eval: { first: new Uint8Array(b64ToBuf(rec.salt)) } } }
+          }
+        });
+      }catch(e){ return false; }
+
+      const ext = assertion.getClientExtensionResults();
+      const prfBytes = ext && ext.prf && ext.prf.results && ext.prf.results.first;
+      if(!prfBytes) return false;
+
+      try{
+        const bioKey = await deriveAesKeyFromPrfBytes(prfBytes);
+        const iv = new Uint8Array(b64ToBuf(rec.iv));
+        const ptBuf = await crypto.subtle.decrypt({ name:'AES-GCM', iv }, bioKey, b64ToBuf(rec.ct));
+        const passcode = new TextDecoder().decode(ptBuf);
+        return await tryUnlock(passcode);
+      }catch(e){
+        console.error('[border-ledger] biometric (prf) unwrap failed', e);
+        return false;
+      }
+    }
+
+    // gate mode
+    if(!rec.wrappingKey) return false;
     try{
-      assertion = await navigator.credentials.get({
+      await navigator.credentials.get({
         publicKey: {
           challenge: randomBytes(32),
-          allowCredentials: [{ id: b64ToBuf(meta.credentialId), type:'public-key' }],
+          allowCredentials: [{ id: b64ToBuf(rec.credentialId), type:'public-key' }],
           userVerification: 'required',
-          extensions: { prf: { eval: { first: new Uint8Array(b64ToBuf(meta.salt)) } } }
+          timeout: 60000
         }
       });
     }catch(e){ return false; }
 
-    const ext = assertion.getClientExtensionResults();
-    const prfBytes = ext && ext.prf && ext.prf.results && ext.prf.results.first;
-    if(!prfBytes) return false;
-
     try{
-      const bioKey = await deriveAesKeyFromPrfBytes(prfBytes);
-      const iv = new Uint8Array(b64ToBuf(meta.iv));
-      const ptBuf = await crypto.subtle.decrypt({ name:'AES-GCM', iv }, bioKey, b64ToBuf(meta.ct));
+      const iv = new Uint8Array(b64ToBuf(rec.iv));
+      const ptBuf = await crypto.subtle.decrypt({ name:'AES-GCM', iv }, rec.wrappingKey, b64ToBuf(rec.ct));
       const passcode = new TextDecoder().decode(ptBuf);
       return await tryUnlock(passcode);
-    }catch(e){ return false; }
+    }catch(e){
+      console.error('[border-ledger] biometric (gate) unwrap failed', e);
+      return false;
+    }
   }
 
 
@@ -1451,11 +1542,26 @@
   let modalImages = [];
   let modalIndex = 0;
 
+  // ---------------------------------------------------------------------
+  // Mobile hardware/gesture back-button handling for the image viewer.
+  // Without this, pressing back while the modal is open closes the whole
+  // PWA (it's the only entry in the history stack), which feels like the
+  // app crashed. Fix: push a dummy history entry when the modal opens, so
+  // "back" just pops that entry (handled via popstate) and closes the
+  // modal instead of leaving the app. If the modal is closed by any other
+  // means (X button, tapping the backdrop, swiping to the next/prev image
+  // doesn't count), we consume that dummy entry ourselves via history.back()
+  // so the history stack doesn't accumulate stale entries.
+  // ---------------------------------------------------------------------
+  let modalHistoryPushed = false;
+
   function openImageModal(images, startIndex){
     modalImages = images;
     modalIndex = startIndex || 0;
     updateModalView();
     imgModalOverlay.classList.add('open');
+    history.pushState({ imgModal: true }, '');
+    modalHistoryPushed = true;
   }
   function updateModalView(){
     imgModalImg.src = modalImages[modalIndex] || '';
@@ -1467,17 +1573,27 @@
     imgModalNextBtn.disabled = modalIndex >= modalImages.length - 1;
     resetImageZoom();
   }
-  function closeImageModal(){
+  // fromPopstate: true when we're closing *because* the back button already
+  // popped our history entry (so we must NOT call history.back() again, or
+  // we'd navigate one step further back than intended).
+  function closeImageModal(fromPopstate){
     imgModalOverlay.classList.remove('open');
     imgModalImg.src = '';
     modalImages = [];
     resetImageZoom();
+    if(modalHistoryPushed){
+      modalHistoryPushed = false;
+      if(!fromPopstate) history.back();
+    }
   }
+  window.addEventListener('popstate', ()=>{
+    if(imgModalOverlay.classList.contains('open')) closeImageModal(true);
+  });
   imgModalPrevBtn.addEventListener('click', ()=>{ if(modalIndex > 0){ modalIndex--; updateModalView(); } });
   imgModalNextBtn.addEventListener('click', ()=>{ if(modalIndex < modalImages.length - 1){ modalIndex++; updateModalView(); } });
-  imgModalCloseBtn.addEventListener('click', closeImageModal);
+  imgModalCloseBtn.addEventListener('click', ()=>closeImageModal(false));
   imgModalOverlay.addEventListener('click', (e)=>{
-    if(e.target === imgModalOverlay) closeImageModal();
+    if(e.target === imgModalOverlay) closeImageModal(false);
   });
 
   // -----------------------------------------------------------------------
@@ -2739,7 +2855,7 @@
   }
 
   async function runUnlockFlow(){
-    const bioRec = await rawStorage.get(BIO_META_KEY, false).catch(()=>null);
+    const bioRec = idbDB ? await idbGet(BIO_META_KEY).catch(()=>null) : null;
     const canBio = !!bioRec && await biometricPlatformAvailable();
 
     if(canBio){
@@ -2790,7 +2906,7 @@
       return;
     }
     btn.disabled = false;
-    const rec = await rawStorage.get(BIO_META_KEY, false).catch(()=>null);
+    const rec = idbDB ? await idbGet(BIO_META_KEY).catch(()=>null) : null;
     btn.textContent = rec ? '🔓 关闭指纹/Face ID 解锁' : '👆 启用指纹/Face ID 解锁';
     btn.dataset.enabled = rec ? '1' : '0';
   }

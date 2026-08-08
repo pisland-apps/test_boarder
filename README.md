@@ -29,7 +29,17 @@ upload the files.
 different files and do **not** sync automatically — each file has a
 comment pointing at the other as a reminder. Bump them together.
 
+## Editing the inline `<script>` blocks
+
+This file's CSP allow-lists its two inline `<script>` blocks by exact
+sha256 hash instead of `'unsafe-inline'`. If you change so much as one
+character inside either block, **you must recompute and swap in its new
+hash** in the `script-src` line of the CSP `<meta>` tag near the top of
+`index.html`, or the browser will silently block that script — the page
+loads but every button does nothing. See the in-file comment right above
+the CSP meta tag for the exact `openssl` recompute command.
+
 ## Current versions
 
-- `APP_VERSION`: `v8` (`index.html`)
-- `CACHE_NAME`: `border-day-ledger-cache-v8` (`sw.js`)
+- `APP_VERSION`: `v9` (`index.html`)
+- `CACHE_NAME`: `border-day-ledger-cache-v9` (`sw.js`)

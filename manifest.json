@@ -1,0 +1,32 @@
+{
+  "name": "关口记录簿 Border Day Ledger",
+  "short_name": "关口记录簿",
+  "description": "统计马来西亚、新加坡及其他国家的停留天数，用于税务居民身份核对。",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#F2EEE3",
+  "theme_color": "#1E2A44",
+  "lang": "zh-CN",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

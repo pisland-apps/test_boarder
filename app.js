@@ -34,7 +34,7 @@
   // (Ctrl/Cmd+Shift+R) or clear the Service Worker/cache in devtools,
   // rather than assuming the deploy didn't work.
   // ---------------------------------------------------------------------
-  const APP_VERSION = 'v12';
+  const APP_VERSION = 'v13';
   const APP_VERSION_DATE = '2026-08-09';
 
   // Set immediately (not gated behind unlock) so the badge is visible on

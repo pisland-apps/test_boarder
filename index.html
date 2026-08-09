@@ -23,7 +23,7 @@
 -->
 <meta http-equiv="Content-Security-Policy" content="
   default-src 'self';
-  script-src 'self' https://cdnjs.cloudflare.com 'sha256-Xjcf2oDTxhS0nrI6m8KAA7IDkt1sOvfI9dBQRL0ff5M=' 'sha256-kW+rtVzNXm+sKdyPJoGq4ZsDV5dBfAnIhWh8G1wif+k=';
+  script-src 'self' https://cdnjs.cloudflare.com 'sha256-yhcgTHIWgdW/LWxJM83y8qbA1aUL+jTsfi3cQy5JcZ8=' 'sha256-FF9sdaAzhNmioasJ30jYYocaHSglV0BVv52Sxe7J0MY=';
   style-src 'self' 'unsafe-inline';
   img-src 'self' data:;
   font-src 'self';
@@ -284,6 +284,14 @@
     display:flex; align-items:center; justify-content:center;
   }
   .image-thumb-item.pending .image-thumb{border-color:var(--checkpoint-soft);}
+  .pdf-thumb-icon{
+    width:52px; height:52px; box-sizing:border-box;
+    border:1px solid var(--gold-line); border-radius:3px;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:1px; background:var(--paper-dark); font-size:18px; line-height:1;
+  }
+  .pdf-thumb-icon span{font-family:var(--mono); font-size:8px; color:var(--ink-soft); letter-spacing:0.02em;}
+  .image-thumb-item.pending .pdf-thumb-icon{border-color:var(--checkpoint-soft);}
   .view-image-link{
     font-size:12px; color:var(--checkpoint); text-decoration:underline;
     background:none; border:none; cursor:pointer; font-family:var(--sans); padding:0;
@@ -343,6 +351,16 @@
     transform-origin:center center; touch-action:none;
   }
   .img-modal-box img.zoomed{cursor:grab; max-width:none; max-height:none;}
+  /* PDF pages render into this scrollable column instead of the pinch-zoom
+     <img> above — pdf.js draws one <canvas> per page onto it. */
+  .img-modal-pdfwrap{
+    display:none; flex:1 1 auto; min-width:0; min-height:0;
+    max-height:70vh; overflow:auto; flex-direction:column; align-items:center;
+  }
+  .img-modal-pdfwrap canvas{
+    max-width:100%; display:block; margin:0 auto 10px;
+    border-radius:2px; box-shadow:0 1px 4px rgba(0,0,0,0.15);
+  }
   .img-modal-hint{
     font-family:var(--sans); font-size:10.5px; color:var(--grey-text);
     text-align:center; opacity:0.75;
@@ -351,6 +369,7 @@
     font-family:var(--sans); font-size:12px; color:var(--ink-soft);
     background:none; border:1px solid var(--gold-line); border-radius:3px;
     padding:5px 12px; cursor:pointer;
+    text-decoration:none; display:inline-block;
   }
   .img-modal-close:hover{border-color:var(--stamp); color:var(--stamp);}
   .img-modal-nav{
@@ -686,9 +705,9 @@
         <input type="text" id="tripNote" placeholder="例如：出差 / 探亲">
       </div>
       <div class="field image-field" style="flex:1; min-width:220px;">
-        <label for="tripImage">参考图片（可选，可多张）</label>
+        <label for="tripImage">参考图片 / PDF（可选，可多张）</label>
         <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
-          <input type="file" id="tripImage" accept="image/*" multiple style="flex:1 1 140px; min-width:0; max-width:100%;">
+          <input type="file" id="tripImage" accept="image/*,application/pdf" multiple style="flex:1 1 140px; min-width:0; max-width:100%;">
           <button type="button" class="btn ghost" id="cameraBtn" title="拍照" style="white-space:nowrap; padding:8px 12px; flex-shrink:0;">📷 拍照</button>
           <input type="file" id="cameraInput" accept="image/*" capture="environment" style="display:none;">
         </div>
@@ -726,6 +745,7 @@
   <div class="img-modal-box">
     <div style="display:flex; justify-content:space-between; align-items:center; gap:12px;">
       <span id="imgModalCounter" style="font-family:var(--mono); font-size:12px; color:var(--grey-text);"></span>
+      <a class="img-modal-close" id="imgModalSaveBtn" href="#" download title="保存副本到本机">保存副本</a>
       <button class="img-modal-close" id="imgModalCloseBtn">关闭</button>
     </div>
     <div style="position:relative; display:flex; align-items:center; gap:8px; min-width:0;">
@@ -733,6 +753,7 @@
       <div class="img-modal-imgwrap" id="imgModalImgWrap">
         <img id="imgModalImg" src="" alt="行程参考图片">
       </div>
+      <div class="img-modal-pdfwrap" id="imgModalPdfWrap"></div>
       <button class="img-modal-nav" id="imgModalNextBtn" title="下一张">›</button>
     </div>
     <div class="img-modal-hint" id="imgModalHint">双指捏合可放大 · 放大后可拖动查看</div>
@@ -746,8 +767,27 @@
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" integrity="sha512-XMVd28F1oH/O71fzwBnV7HucLxVwtxf26XV8P4wPk26EDxuGZ91N8bsOttmnomcCD3CS5ZMRL50H0GgOHvegtg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<!--
+  pdf.js is vendored locally at ./lib/pdf.min.js + ./lib/pdf.worker.min.js
+  (pdfjs-dist 3.11.174, same build used by the sibling tax-tracker app),
+  rather than pulled from a CDN — this is a same-origin 'self' script, so
+  no SRI hash is needed and there's no third-party origin to allow-list
+  or keep in sync with a CDN version string. Loaded here (ahead of the
+  main inline script below) so pdfjsLib exists before it configures the
+  worker path.
+-->
+<script src="lib/pdf.min.js" referrerpolicy="no-referrer"></script>
 <script>
 (function(){
+  // pdf.js worker — vendored locally at ./lib/pdf.worker.min.js (same
+  // pdfjs-dist 3.11.174 package as ./lib/pdf.min.js loaded above). Used by
+  // the attachment viewer to render PDF pages onto <canvas> instead of
+  // relying on the browser's own PDF handling, which can silently trigger
+  // a download or render blank depending on the browser's PDF setting.
+  if(window.pdfjsLib){
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'lib/pdf.worker.min.js';
+  }
+
   // ---------------------------------------------------------------------
   // Build version — shown in the small badge fixed to the bottom-right of
   // the screen (visible even before unlocking). This is purely a display
@@ -767,8 +807,8 @@
   // (Ctrl/Cmd+Shift+R) or clear the Service Worker/cache in devtools,
   // rather than assuming the deploy didn't work.
   // ---------------------------------------------------------------------
-  const APP_VERSION = 'v10';
-  const APP_VERSION_DATE = '2026-08-08';
+  const APP_VERSION = 'v11';
+  const APP_VERSION_DATE = '2026-08-09';
 
   // Set immediately (not gated behind unlock) so the badge is visible on
   // the lock screen before the password is entered.
@@ -1328,6 +1368,8 @@
   const imgModalPrevBtn = document.getElementById('imgModalPrevBtn');
   const imgModalNextBtn = document.getElementById('imgModalNextBtn');
   const imgModalCounter = document.getElementById('imgModalCounter');
+  const imgModalPdfWrap = document.getElementById('imgModalPdfWrap');
+  const imgModalSaveBtn = document.getElementById('imgModalSaveBtn');
 
   // pending image state for the form currently being filled
   let pendingNewImages = [];        // array of new dataURL strings picked but not yet saved
@@ -1421,6 +1463,30 @@
     return 'i' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
   }
 
+  // Attachments are stored as a single data: URL string per imgId (same as
+  // always) — the mime prefix on that string is enough to tell a PDF apart
+  // from an image, so no schema change / migration is needed.
+  function isPdfDataURL(s){
+    return typeof s === 'string' && s.startsWith('data:application/pdf');
+  }
+
+  // used when importing JSON backups — accepts either kind of attachment
+  // data URL, rejecting anything else that might have ended up in the file
+  function isSupportedAttachmentDataURL(s){
+    return typeof s === 'string' && (s.startsWith('data:image') || s.startsWith('data:application/pdf'));
+  }
+
+  // PDFs are stored as-is (no client-side compression available like the
+  // JPEG re-encode below), so just read the raw file to a data URL.
+  function readFileAsDataURL(file){
+    return new Promise((resolve, reject)=>{
+      const reader = new FileReader();
+      reader.onload = ()=> resolve(reader.result);
+      reader.onerror = (err)=>{ console.error('[border-ledger] file read failed', err); reject(err); };
+      reader.readAsDataURL(file);
+    });
+  }
+
   // resize + compress an image file down to a data URL, capping the longest side
   function resizeImageFile(file, maxDim, quality){
     return new Promise((resolve, reject)=>{
@@ -1461,12 +1527,20 @@
   async function handleIncomingImageFiles(fileList){
     const files = Array.from(fileList || []);
     for(const file of files){
-      if(!file.type.startsWith('image/')) continue;
+      const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name || '');
+      const isImage = file.type.startsWith('image/');
+      if(!isImage && !isPdf) continue;
       try{
-        const dataURL = await resizeImageFile(file, 1400, 0.82);
-        pendingNewImages.push(dataURL);
+        if(isPdf){
+          if(file.size > 8 * 1024 * 1024){ alert('已跳过 "' + file.name + '"（PDF 超过 8MB）'); continue; }
+          const dataURL = await readFileAsDataURL(file);
+          pendingNewImages.push(dataURL);
+        } else {
+          const dataURL = await resizeImageFile(file, 1400, 0.82);
+          pendingNewImages.push(dataURL);
+        }
       }catch(e){
-        alert('有一张图片处理失败，已跳过：' + file.name);
+        alert('有一个文件处理失败，已跳过：' + file.name);
       }
     }
     renderImageThumbList();
@@ -1486,13 +1560,19 @@
     cameraInput.value = ''; // clear so taking another photo still fires 'change'
   });
 
+  function attachmentThumbMarkup(dataURL, altText){
+    return isPdfDataURL(dataURL)
+      ? '<div class="pdf-thumb-icon">📄<span>PDF</span></div>'
+      : '<img class="image-thumb" src="' + dataURL + '" alt="' + altText + '">';
+  }
+
   function renderImageThumbList(){
     const items = [];
     existingImagesForEdit.forEach(({imgId, dataURL})=>{
       if(removedExistingImageIds.has(imgId)) return;
       items.push(
         '<div class="image-thumb-item">' +
-          '<img class="image-thumb" src="' + dataURL + '" alt="已上传图片">' +
+          attachmentThumbMarkup(dataURL, '已上传图片') +
           '<button type="button" class="image-thumb-remove" data-action="removeExistingImage" data-img-id="' + escapeHtml(imgId) + '" title="移除">×</button>' +
         '</div>'
       );
@@ -1500,7 +1580,7 @@
     pendingNewImages.forEach((dataURL, idx)=>{
       items.push(
         '<div class="image-thumb-item pending">' +
-          '<img class="image-thumb" src="' + dataURL + '" alt="待上传图片">' +
+          attachmentThumbMarkup(dataURL, '待上传图片') +
           '<span class="thumb-size">' + Math.round(dataURL.length/1024) + 'KB</span>' +
           '<button type="button" class="image-thumb-remove" data-action="removePendingImage" data-idx="' + idx + '" title="移除">×</button>' +
         '</div>'
@@ -1563,22 +1643,88 @@
     history.pushState({ imgModal: true }, '');
     modalHistoryPushed = true;
   }
+  // Bumped on every modal navigation/close so an in-flight async PDF render
+  // from a page the user has since left can detect it's stale and bail out
+  // instead of drawing canvases into a wrapper nobody's looking at anymore.
+  let pdfRenderToken = 0;
+
   function updateModalView(){
-    imgModalImg.src = modalImages[modalIndex] || '';
+    const cur = modalImages[modalIndex] || '';
+    const isPdf = isPdfDataURL(cur);
     const multi = modalImages.length > 1;
     imgModalCounter.textContent = multi ? (modalIndex+1) + ' / ' + modalImages.length : '';
     imgModalPrevBtn.style.display = multi ? 'flex' : 'none';
     imgModalNextBtn.style.display = multi ? 'flex' : 'none';
     imgModalPrevBtn.disabled = modalIndex <= 0;
     imgModalNextBtn.disabled = modalIndex >= modalImages.length - 1;
+    imgModalSaveBtn.href = cur;
+    imgModalSaveBtn.setAttribute('download', isPdf ? 'border-ledger-attachment.pdf' : 'border-ledger-photo.jpg');
+
+    if(isPdf){
+      pdfRenderToken++;
+      imgModalImg.src = '';
+      imgModalImgWrap.style.display = 'none';
+      imgModalPdfWrap.style.display = 'flex';
+      imgModalHint.style.display = 'none';
+      renderPdfIntoModal(cur, pdfRenderToken);
+    } else {
+      pdfRenderToken++; // invalidate any still-rendering PDF from the previous item
+      imgModalPdfWrap.style.display = 'none';
+      imgModalPdfWrap.innerHTML = '';
+      imgModalImgWrap.style.display = 'flex';
+      imgModalHint.style.display = '';
+      imgModalImg.src = cur;
+    }
     resetImageZoom();
   }
+
+  // Decodes a data:application/pdf;base64,... URL and draws each page onto
+  // its own <canvas> inside #imgModalPdfWrap via pdf.js — deliberately not
+  // an <iframe src="data:..."> or a direct navigation, since both can
+  // silently fail (blank iframe, or the browser treating it as a download)
+  // depending on the browser's own PDF-handling setting.
+  async function renderPdfIntoModal(dataURL, token){
+    imgModalPdfWrap.innerHTML = '<div style="padding:32px; text-align:center; color:var(--grey-text); font-size:12px;">加载中…</div>';
+    try{
+      const base64 = dataURL.substring(dataURL.indexOf(',') + 1);
+      const binary = atob(base64);
+      const bytes = new Uint8Array(binary.length);
+      for(let i=0; i<binary.length; i++) bytes[i] = binary.charCodeAt(i);
+
+      const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
+      if(token !== pdfRenderToken) return; // user moved on before this resolved
+
+      imgModalPdfWrap.innerHTML = '';
+      const containerWidth = Math.min(imgModalPdfWrap.clientWidth || 600, 640);
+      for(let pageNum=1; pageNum<=pdf.numPages; pageNum++){
+        const page = await pdf.getPage(pageNum);
+        if(token !== pdfRenderToken) return;
+        const unscaledViewport = page.getViewport({ scale: 1 });
+        const scale = Math.max(0.1, (containerWidth - 16) / unscaledViewport.width);
+        const viewport = page.getViewport({ scale });
+        const canvas = document.createElement('canvas');
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        imgModalPdfWrap.appendChild(canvas);
+        await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+        if(token !== pdfRenderToken) return;
+      }
+    }catch(e){
+      if(token !== pdfRenderToken) return;
+      console.error('[border-ledger] pdf render failed', e);
+      imgModalPdfWrap.innerHTML = '<div style="padding:32px; text-align:center; color:var(--stamp); font-size:12px;">PDF 预览失败，可点击右上角「保存副本」下载后查看。</div>';
+    }
+  }
+
   // fromPopstate: true when we're closing *because* the back button already
   // popped our history entry (so we must NOT call history.back() again, or
   // we'd navigate one step further back than intended).
   function closeImageModal(fromPopstate){
     imgModalOverlay.classList.remove('open');
     imgModalImg.src = '';
+    pdfRenderToken++;
+    imgModalPdfWrap.style.display = 'none';
+    imgModalPdfWrap.innerHTML = '';
     modalImages = [];
     resetImageZoom();
     if(modalHistoryPushed){
@@ -1867,7 +2013,7 @@
     const t = trips.find(x => x.id === id);
     if(!t) return;
     const images = await getTripImages(t);
-    if(images.length === 0){ alert('图片暂时无法读取，请稍后再试一次。'); return; }
+    if(images.length === 0){ alert('附件暂时无法读取，请稍后再试一次。'); return; }
     openImageModal(images.map(i => i.dataURL), 0);
   }
 
@@ -2261,7 +2407,8 @@
         if(images.length > 0){
           base.images = [];
           images.forEach((img, j)=>{
-            const filename = `t${i}_${j}_${img.imgId}.jpg`;
+            const ext = isPdfDataURL(img.dataURL) ? 'pdf' : 'jpg';
+            const filename = `t${i}_${j}_${img.imgId}.${ext}`;
             const base64Data = (img.dataURL.split(',')[1]) || '';
             imagesFolder.file(filename, base64Data, { base64: true });
             base.images.push(filename);
@@ -2520,16 +2667,16 @@
     }
 
     const skippedCount = (Array.isArray(parsed.trips) ? parsed.trips.length : 0) - incomingTrips.length;
-    const imageCount = incomingTrips.filter(t => typeof t.image === 'string' && t.image.startsWith('data:image')).length;
+    const imageCount = incomingTrips.filter(t => typeof t.image === 'string' && isSupportedAttachmentDataURL(t.image)).length;
     const mode = confirm(
-      `找到 ${incomingTrips.length} 条行程记录${imageCount>0 ? '（含 ' + imageCount + ' 张图片）' : ''}` +
+      `找到 ${incomingTrips.length} 条行程记录${imageCount>0 ? '（含 ' + imageCount + ' 个附件）' : ''}` +
       `${skippedCount>0 ? '（跳过 ' + skippedCount + ' 条格式不正确的记录）' : ''}。\n\n` +
       `点击「确定」= 合并到现有记录\n点击「取消」= 用导入内容替换现有全部记录`
     );
 
     flashStatus('正在导入…');
 
-    // build fresh trip objects with new ids, restoring any attached image(s) to storage
+    // build fresh trip objects with new ids, restoring any attached image(s)/PDF(s) to storage
     // accepts both the current "images" array format and the older single "image" field
     let failedImageCount = 0;
     async function buildTripFromImport(t){
@@ -2538,7 +2685,7 @@
         : (typeof t.image === 'string' ? [t.image] : []);
       const imageIds = [];
       for(const dataURL of sourceImages){
-        if(typeof dataURL !== 'string' || !dataURL.startsWith('data:image')) continue;
+        if(!isSupportedAttachmentDataURL(dataURL)) continue;
         const imgId = newImageId();
         const ok = await setTripImage(newId, imgId, dataURL);
         if(ok) imageIds.push(imgId); else failedImageCount++;
@@ -2634,7 +2781,8 @@
           if(!entry){ failedImageCount++; continue; }
           try{
             const base64Data = await entry.async('base64');
-            const dataURL = 'data:image/jpeg;base64,' + base64Data;
+            const mimePrefix = /\.pdf$/i.test(filename) ? 'data:application/pdf;base64,' : 'data:image/jpeg;base64,';
+            const dataURL = mimePrefix + base64Data;
             const imgId = newImageId();
             const ok = await setTripImage(newId, imgId, dataURL);
             if(ok) imageIds.push(imgId); else failedImageCount++;

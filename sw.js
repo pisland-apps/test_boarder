@@ -8,7 +8,7 @@
 // badge shown bottom-right, even on the lock screen) — they live in
 // different files. Bump BOTH by hand on every deploy. See the deploy
 // checklist in README.md.
-const CACHE_NAME = 'border-day-ledger-cache-v10';
+const CACHE_NAME = 'border-day-ledger-cache-v11';
 
 const APP_SHELL = [
   './',
@@ -17,7 +17,9 @@ const APP_SHELL = [
   './icon-192.png',
   './icon-512.png',
   './icon-maskable-512.png',
-  './apple-touch-icon.png'
+  './apple-touch-icon.png',
+  './lib/pdf.min.js',
+  './lib/pdf.worker.min.js'
 ];
 
 self.addEventListener('install', (event) => {

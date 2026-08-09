@@ -7,7 +7,7 @@
 // near the top of app.js (the small version badge shown bottom-right,
 // even on the lock screen) — they live in different files. Bump BOTH by
 // hand on every deploy. See the deploy checklist in README.md.
-const CACHE_NAME = 'border-day-ledger-cache-v13';
+const CACHE_NAME = 'border-day-ledger-cache-v14';
 
 const APP_SHELL = [
   './',
@@ -19,7 +19,8 @@ const APP_SHELL = [
   './icon-maskable-512.png',
   './apple-touch-icon.png',
   './lib/pdf.min.js',
-  './lib/pdf.worker.min.js'
+  './lib/pdf.worker.min.js',
+  './lib/jszip.min.js'
 ];
 
 self.addEventListener('install', (event) => {
@@ -63,9 +64,11 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // cross-origin (e.g. the JSZip library from cdnjs): network-first,
-  // falling back to a cached copy so ZIP export/import still works offline
-  // once it has been loaded successfully at least once
+  // Cross-origin fallback — kept as a defensive no-op path. As of this
+  // version there are no cross-origin requests left in this app: JSZip
+  // was moved to ./lib/jszip.min.js (same-origin, handled by the app-shell
+  // branch above) alongside pdf.js, and connect-src is 'self' only. This
+  // branch only fires if something cross-origin is ever added back later.
   event.respondWith(
     fetch(req).then((res) => {
       if(res && res.ok){

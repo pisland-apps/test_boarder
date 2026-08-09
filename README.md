@@ -38,9 +38,12 @@ PDFs are rendered inside the existing attachment viewer modal via
 [pdf.js](https://mozilla.github.io/pdf.js/), vendored locally at
 `lib/pdf.min.js` + `lib/pdf.worker.min.js` (pdfjs-dist 3.11.174) rather
 than pulled from a CDN — same pattern as the sibling `tax-tracker` app.
-This keeps `script-src` free of a pdf.js CDN origin (only `cdnjs.cloudflare.com`
-remains, for JSZip). To update pdf.js later, replace both files in `lib/`
-with a matching version pair from the same pdfjs-dist release and
+JSZip (used for the encrypted ZIP backup/import feature) is vendored the
+same way at `lib/jszip.min.js` (v3.10.1) — it used to be loaded from
+cdnjs.cloudflare.com, but that meant ZIP export/import broke if that CDN
+was unreachable, and it was the one remaining third-party origin in
+`script-src`. `script-src` is now `'self'` only. To update either library
+later, replace the matching file(s) in `lib/` with a newer version and
 redeploy — no code changes needed unless the API itself changed.
 
 JSON/ZIP export and import both carry PDF attachments correctly (ZIP

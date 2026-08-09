@@ -6,7 +6,8 @@
 <!--
   Content-Security-Policy
   ========================
-  script-src is 'self' plus cdnjs.cloudflare.com (for JSZip). No inline
+  script-src is 'self' only — jszip and pdf.js are both vendored locally
+  under ./lib/, so no third-party origin needs to be allow-listed. No inline
   script and no sha256 hash: all app logic lives in the external file
   app.js, loaded via <script src="app.js"></script> below. 'self' already
   covers same-origin external scripts with no hash needed.
@@ -23,7 +24,7 @@
 -->
 <meta http-equiv="Content-Security-Policy" content="
   default-src 'self';
-  script-src 'self' https://cdnjs.cloudflare.com;
+  script-src 'self';
   style-src 'self' 'unsafe-inline';
   img-src 'self' data:;
   font-src 'self';
@@ -772,7 +773,16 @@
   说明：天数计算采用「出发日与返回日均计为整天」的简化方式，实际税务规则（例如马来西亚 182 天 / 新加坡 183 天居民门槛）可能有不同的计算细节。以上门槛数字仅供参考，不构成税务意见，具体请以马来西亚内陆税收局（LHDN）、新加坡税务局（IRAS）规定或专业税务顾问意见为准。
 </div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" integrity="sha512-XMVd28F1oH/O71fzwBnV7HucLxVwtxf26XV8P4wPk26EDxuGZ91N8bsOttmnomcCD3CS5ZMRL50H0GgOHvegtg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<!--
+  jszip is vendored locally at ./lib/jszip.min.js (v3.10.1, matches the
+  version previously pinned via SRI hash when this was loaded from
+  cdnjs.cloudflare.com) rather than pulled from a CDN — same reasoning as
+  pdf.js below: this is now a same-origin 'self' script, so cdnjs.cloudflare.com
+  no longer needs to be allow-listed in the CSP's script-src, and ZIP
+  export/import no longer depends on that CDN being reachable. Also listed
+  in sw.js's APP_SHELL so it's cached for offline use.
+-->
+<script src="lib/jszip.min.js" referrerpolicy="no-referrer"></script>
 <!--
   pdf.js is vendored locally at ./lib/pdf.min.js + ./lib/pdf.worker.min.js
   (pdfjs-dist 3.11.174, same build used by the sibling tax-tracker app),

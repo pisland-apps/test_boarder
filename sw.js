@@ -4,15 +4,15 @@
 // returning visitors may keep seeing the old cached version.
 //
 // This does NOT sync automatically with APP_VERSION / APP_VERSION_DATE
-// near the top of the inline <script> in index.html (the small version
-// badge shown bottom-right, even on the lock screen) — they live in
-// different files. Bump BOTH by hand on every deploy. See the deploy
-// checklist in README.md.
-const CACHE_NAME = 'border-day-ledger-cache-v11';
+// near the top of app.js (the small version badge shown bottom-right,
+// even on the lock screen) — they live in different files. Bump BOTH by
+// hand on every deploy. See the deploy checklist in README.md.
+const CACHE_NAME = 'border-day-ledger-cache-v12';
 
 const APP_SHELL = [
   './',
   './index.html',
+  './app.js',
   './manifest.json',
   './icon-192.png',
   './icon-512.png',

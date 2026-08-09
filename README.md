@@ -1,24 +1,26 @@
 # Border Day Ledger — deploy checklist
 
-Single-file app: all HTML/CSS/JS lives in `index.html`, plus a separate
+App logic lives in `app.js`, markup/CSS in `index.html`, plus a separate
 `sw.js` service worker for offline caching, and a `lib/` folder holding a
 locally-vendored copy of pdf.js (used by the attachment viewer for PDF
 attachments — see "PDF attachments" below). There is no build step — just
-upload the files.
+upload the files together.
 
 ## Every time you deploy a change
 
-1. Edit `index.html` (and/or `sw.js`) as needed.
-2. **Bump the version marker in `index.html`** — near the top of the
-   inline `<script>`, the `APP_VERSION` / `APP_VERSION_DATE` constants.
-   This drives the small badge shown bottom-right of the screen (visible
-   even on the lock screen, before the password is entered). It's a
-   display label only — nothing else reads it.
-3. **Bump `CACHE_NAME` in `sw.js`** (e.g. `...-cache-v10` → `...-cache-v11`).
+1. Edit `app.js` / `index.html` / `sw.js` as needed.
+2. **Bump the version marker in `app.js`** — near the top, the
+   `APP_VERSION` / `APP_VERSION_DATE` constants. This drives the small
+   badge shown bottom-right of the screen (visible even on the lock
+   screen, before the password is entered). It's a display label only —
+   nothing else reads it.
+3. **Bump `CACHE_NAME` in `sw.js`** (e.g. `...-cache-v11` → `...-cache-v12`).
    This is what actually forces the service worker to fetch fresh files
-   instead of serving the old cached `index.html` to returning visitors.
-4. Upload **all changed files together** (`index.html` + `sw.js` + `lib/`,
-   plus any icon/manifest changes) — never deploy just one.
+   instead of serving the old cached copy to returning visitors.
+4. Upload **all changed files together** (`index.html` + `app.js` +
+   `sw.js` + `lib/`, plus any icon/manifest changes) — never deploy just
+   one. GitHub Pages in particular will serve a broken mix of old/new
+   files if you only push some of them.
 5. After deploying, open the app and check the version badge. If it
    doesn't match what you just shipped, the browser is likely still
    running the old cached build — hard refresh (Ctrl/Cmd+Shift+R) or clear
@@ -37,9 +39,8 @@ PDFs are rendered inside the existing attachment viewer modal via
 `lib/pdf.min.js` + `lib/pdf.worker.min.js` (pdfjs-dist 3.11.174) rather
 than pulled from a CDN — same pattern as the sibling `tax-tracker` app.
 This keeps `script-src` free of a pdf.js CDN origin (only `cdnjs.cloudflare.com`
-remains, for JSZip) and avoids an SRI hash that would need to stay in sync
-with a CDN version string. To update pdf.js later, replace both files in
-`lib/` with a matching version pair from the same pdfjs-dist release and
+remains, for JSZip). To update pdf.js later, replace both files in `lib/`
+with a matching version pair from the same pdfjs-dist release and
 redeploy — no code changes needed unless the API itself changed.
 
 JSON/ZIP export and import both carry PDF attachments correctly (ZIP
@@ -48,31 +49,40 @@ import reconstructs the right mime prefix from that extension).
 
 ## Why two separate version markers?
 
-`APP_VERSION` (in `index.html`) and `CACHE_NAME` (in `sw.js`) live in
+`APP_VERSION` (in `app.js`) and `CACHE_NAME` (in `sw.js`) live in
 different files and do **not** sync automatically — each file has a
 comment pointing at the other as a reminder. Bump them together.
 
-## Editing the inline `<script>` blocks
+## App logic lives in app.js, not inline `<script>` — here's why
 
-This file's CSP allow-lists its two inline `<script>` blocks by exact
-sha256 hash instead of `'unsafe-inline'`. If you change so much as one
-character inside either block, **you must recompute and swap in its new
-hash** in the `script-src` line of the CSP `<meta>` tag near the top of
-`index.html`, or the browser will silently block that script — the page
-loads but every button does nothing. See the in-file comment right above
-the CSP meta tag for the exact `openssl` recompute command.
+Earlier deploys (through v11) kept all app logic in two inline
+`<script>` blocks in `index.html`, allow-listed in the CSP by exact
+sha256 hash instead of `'unsafe-inline'`. That turned out to be fragile
+in practice: **after deploying v11 to GitHub Pages, every button on the
+page silently stopped working.** The cause was a CSP hash mismatch —
+something in the local→GitHub Pages upload path changed a byte in one of
+the inline script blocks (this class of drift is usually git line-ending
+normalization or an editor/upload pipeline touching whitespace), so its
+computed hash no longer matched the one hard-coded in the CSP `<meta>`
+tag. Chrome then silently blocked that script from running — the page
+still loads, nothing errors visibly unless you specifically open the
+DevTools Console and look for a CSP violation line. This is the second
+time this exact failure hit this app (a *different* stale hash, for the
+service-worker registration script, was also found and fixed in the v11
+deploy) — recomputing hashes by hand on every edit is what caused it.
 
-⚠ Note: as of the v11 deploy, the *previous* CSP hash for the second
-(service-worker registration) inline script was found to be stale/wrong —
-it didn't match that script's actual bytes, meaning offline caching may
-have been silently broken in earlier deploys without any visible error
-short of checking the browser console for a CSP violation. Both hashes
-were recomputed and verified byte-for-byte against the shipped file as
-part of this deploy. If you ever suspect a hash mismatch, don't just trust
-the in-file comment's example command output — recompute and diff both
-values explicitly, the way this deploy did.
+**Fix applied in v12: moved all app logic into `app.js`, loaded via
+`<script src="app.js"></script>`.** `script-src 'self'` already covers
+same-origin external scripts with no hash required, so there is nothing
+left to keep in sync — this whole failure class is now structurally
+impossible for this app, the same way `tax-tracker` and `ledger-pwa`
+already avoid it. If you ever see "every button suddenly does nothing"
+again on an app in this family, check the DevTools Console for a CSP
+violation first — it's the signature symptom of a stale hash, and if a
+file still uses inline hash-locked scripts, the permanent fix is the
+same one applied here: move the code to an external `.js` file.
 
 ## Current versions
 
-- `APP_VERSION`: `v11` (`index.html`)
-- `CACHE_NAME`: `border-day-ledger-cache-v11` (`sw.js`)
+- `APP_VERSION`: `v12` (`app.js`)
+- `CACHE_NAME`: `border-day-ledger-cache-v12` (`sw.js`)

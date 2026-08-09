@@ -354,7 +354,13 @@
   /* PDF pages render into this scrollable column instead of the pinch-zoom
      <img> above — pdf.js draws one <canvas> per page onto it. */
   .img-modal-pdfwrap{
-    display:none; flex:1 1 auto; min-width:0; min-height:0;
+    display:none; flex:1 1 auto; min-height:0;
+    /* Give this a real minimum width up front. Without it the wrap starts
+       out empty (0 width) at the moment app.js measures clientWidth to size
+       the rendered canvas, the box then hugs that near-zero width, and every
+       page renders too small to read — self-reinforcing on every PDF open
+       since the next measurement just reads back the same tiny width. */
+    min-width:min(560px, calc(90vw - 110px));
     max-height:70vh; overflow:auto; flex-direction:column; align-items:center;
   }
   .img-modal-pdfwrap canvas{

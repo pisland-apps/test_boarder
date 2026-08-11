@@ -784,16 +784,23 @@
 -->
 <script src="lib/jszip.min.js" referrerpolicy="no-referrer"></script>
 <!--
-  pdf.js is vendored locally at ./lib/pdf.min.js + ./lib/pdf.worker.min.js
-  (pdfjs-dist 3.11.174, same build used by the sibling tax-tracker app),
+  pdf.js is vendored locally at ./lib/pdf.min.mjs + ./lib/pdf.worker.min.mjs
+  (pdfjs-dist 6.2.108, same build used by the sibling tax-tracker app),
   rather than pulled from a CDN — this is a same-origin 'self' script, so
   no SRI hash is needed and there's no third-party origin to allow-list
-  or keep in sync with a CDN version string. Loaded here (ahead of
-  app.js below) so pdfjsLib exists before app.js configures the worker
-  path.
+  or keep in sync with a CDN version string.
+
+  As of pdfjs-dist v4+, pdf.js dropped its global-script build entirely —
+  it ships only as an ES module (.mjs), with no window.pdfjsLib to read
+  off a plain <script> tag. So there's no separate pdf.min.mjs <script>
+  tag here anymore: app.js imports it directly via
+  `import * as pdfjsLib from './lib/pdf.min.mjs'` at its own top, which
+  is why app.js must be loaded with type="module" below. Module scripts
+  are deferred and run in document order, same as the old two-script
+  setup, so load order relative to other same-origin scripts is
+  unchanged.
 -->
-<script src="lib/pdf.min.js" referrerpolicy="no-referrer"></script>
-<script src="app.js"></script>
+<script type="module" src="app.js" referrerpolicy="no-referrer"></script>
 
 </body>
 </html>

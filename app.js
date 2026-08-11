@@ -4,16 +4,24 @@
 // sha256 hash to keep in sync — same pattern as the sibling tax-tracker app.
 // See README.md for why this change was made (a CSP hash mismatch after
 // deploying to GitHub Pages silently broke every button on the page).
+//
+// pdf.js (pdfjs-dist 6.2.108) is ESM-only as of v4+ — there is no more
+// global-script build, so this file itself must be loaded as
+// <script type="module" src="app.js"> (see index.html) and pdf.js is
+// imported directly instead of read off window.pdfjsLib. The import must
+// stay at true top level (outside the IIFE below) — that's a hard
+// requirement of ES module syntax.
+import * as pdfjsLib from './lib/pdf.min.mjs';
 
 (function(){
-  // pdf.js worker — vendored locally at ./lib/pdf.worker.min.js (same
-  // pdfjs-dist 3.11.174 package as ./lib/pdf.min.js loaded above). Used by
-  // the attachment viewer to render PDF pages onto <canvas> instead of
+  // pdf.js worker — vendored locally at ./lib/pdf.worker.min.mjs (same
+  // pdfjs-dist 6.2.108 package as ./lib/pdf.min.mjs imported above). Used
+  // by the attachment viewer to render PDF pages onto <canvas> instead of
   // relying on the browser's own PDF handling, which can silently trigger
   // a download or render blank depending on the browser's PDF setting.
-  if(window.pdfjsLib){
-    pdfjsLib.GlobalWorkerOptions.workerSrc = 'lib/pdf.worker.min.js';
-  }
+  // pdf.js detects the .mjs extension and spins the worker up as a module
+  // worker automatically — no extra options needed here.
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'lib/pdf.worker.min.mjs';
 
   // ---------------------------------------------------------------------
   // Build version — shown in the small badge fixed to the bottom-right of
@@ -34,8 +42,8 @@
   // (Ctrl/Cmd+Shift+R) or clear the Service Worker/cache in devtools,
   // rather than assuming the deploy didn't work.
   // ---------------------------------------------------------------------
-  const APP_VERSION = 'v14';
-  const APP_VERSION_DATE = '2026-08-09';
+  const APP_VERSION = 'v17';
+  const APP_VERSION_DATE = '2026-08-11';
 
   // Set immediately (not gated behind unlock) so the badge is visible on
   // the lock screen before the password is entered.
@@ -962,8 +970,83 @@
       if(!fromPopstate) history.back();
     }
   }
+  // ---------------------------------------------------------------------
+  // Mobile hardware/gesture back-button handling for a long, scrolled-down
+  // trip list. If you've scrolled far down (e.g. searching for an old
+  // entry) and hit back, it used to quit the whole PWA immediately — same
+  // "only entry in the history stack" problem as the image modal above —
+  // which then meant scrolling all the way back to the top by hand.
+  //
+  // Fix: same dummy-history-entry trick as the image modal. Once scrolled
+  // more than SCROLL_GUARD_PX past the top, push one extra history entry.
+  // The first back press pops that entry (caught via popstate below) and
+  // scrolls to top instead of exiting; a second press (nothing left of
+  // ours to pop) exits/navigates back normally. If the user scrolls back
+  // to the top themselves without ever pressing back, the dummy entry is
+  // retired quietly via history.back() so it doesn't sit there as a stale
+  // entry the next real back press would have to eat through first.
+  // ---------------------------------------------------------------------
+  const SCROLL_GUARD_PX = 400;
+  let scrollGuardPushed = false;
+  let ignoreNextPopstateForScrollGuard = false;
+  // True while our own scrollTo({behavior:'smooth'}) animation below is in
+  // flight. Without this, the animation's own 'scroll' events fire while
+  // scrollY is still >SCROLL_GUARD_PX (mid-animation) and race with
+  // syncScrollGuard: it sees "scrolled down, no guard installed" and pushes
+  // a fresh entry, which then gets retired again a moment later as the
+  // animation finishes crossing back under the threshold. Each back press
+  // was quietly doing 1 real pop + 1 extra push + 1 extra pop in rapid
+  // succession — enough of those in a short window and the browser's
+  // built-in pushState/back() rate limit kicks in and silently starts
+  // dropping the calls, which looked like "works once, then stops working
+  // at all." Freezing the guard for the duration of the animation removes
+  // that extra push/pop pair entirely.
+  let autoScrolling = false;
+
+  function scrollToTopGuarded(){
+    autoScrolling = true;
+    let settled = false;
+    const finish = () => {
+      if(settled) return;
+      settled = true;
+      autoScrolling = false;
+    };
+    // 'scrollend' (Chrome 114+, Safari 18.2+) fires right as the animation
+    // actually finishes; the timeout is a fallback for browsers that don't
+    // support it yet (older iOS Safari) so autoScrolling can't get stuck on.
+    window.addEventListener('scrollend', finish, { once:true });
+    setTimeout(finish, 700);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function syncScrollGuard(){
+    // Don't install/retire the guard while the image modal or lock screen
+    // owns the history stack / the screen — let their own handling run,
+    // untouched, instead of the two stepping on each other. Same for our
+    // own scroll-to-top animation, which must not be treated as a fresh
+    // user scroll (see the autoScrolling comment above).
+    if(imgModalOverlay.classList.contains('open')) return;
+    if(lockOverlayEl && lockOverlayEl.classList.contains('open')) return;
+    if(autoScrolling) return;
+
+    if(window.scrollY > SCROLL_GUARD_PX && !scrollGuardPushed){
+      history.pushState({ scrollGuard: true }, '');
+      scrollGuardPushed = true;
+    } else if(window.scrollY <= SCROLL_GUARD_PX && scrollGuardPushed){
+      scrollGuardPushed = false;
+      ignoreNextPopstateForScrollGuard = true;
+      history.back();
+    }
+  }
+  window.addEventListener('scroll', ()=>{ requestAnimationFrame(syncScrollGuard); }, { passive:true });
+
   window.addEventListener('popstate', ()=>{
-    if(imgModalOverlay.classList.contains('open')) closeImageModal(true);
+    if(imgModalOverlay.classList.contains('open')){ closeImageModal(true); return; }
+    if(ignoreNextPopstateForScrollGuard){ ignoreNextPopstateForScrollGuard = false; return; }
+    if(scrollGuardPushed){
+      scrollGuardPushed = false;
+      scrollToTopGuarded();
+    }
   });
   imgModalPrevBtn.addEventListener('click', ()=>{ if(modalIndex > 0){ modalIndex--; updateModalView(); } });
   imgModalNextBtn.addEventListener('click', ()=>{ if(modalIndex < modalImages.length - 1){ modalIndex++; updateModalView(); } });

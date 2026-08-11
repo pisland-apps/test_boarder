@@ -36,15 +36,35 @@ migration was needed.
 
 PDFs are rendered inside the existing attachment viewer modal via
 [pdf.js](https://mozilla.github.io/pdf.js/), vendored locally at
-`lib/pdf.min.js` + `lib/pdf.worker.min.js` (pdfjs-dist 3.11.174) rather
+`lib/pdf.min.mjs` + `lib/pdf.worker.min.mjs` (pdfjs-dist 6.2.108) rather
 than pulled from a CDN — same pattern as the sibling `tax-tracker` app.
 JSZip (used for the encrypted ZIP backup/import feature) is vendored the
 same way at `lib/jszip.min.js` (v3.10.1) — it used to be loaded from
 cdnjs.cloudflare.com, but that meant ZIP export/import broke if that CDN
 was unreachable, and it was the one remaining third-party origin in
-`script-src`. `script-src` is now `'self'` only. To update either library
-later, replace the matching file(s) in `lib/` with a newer version and
-redeploy — no code changes needed unless the API itself changed.
+`script-src`. `script-src` is now `'self'` only.
+
+**pdf.js update history:** as of v17 this was bumped from the previously
+vendored 3.11.174 (2023) to 6.2.108 — the old version had a known
+arbitrary-JS-execution vulnerability in font handling (CVE-2024-4367,
+fixed upstream in 4.2.67). This was not a drop-in file swap: pdfjs-dist
+v4+ dropped the classic global-script build entirely and ships ESM-only
+(`pdf.min.mjs` / `pdf.worker.min.mjs`, no more `.js` build with
+`window.pdfjsLib`). To land it, `app.js` now imports pdf.js directly
+(`import * as pdfjsLib from './lib/pdf.min.mjs'` at the top of the
+file) and is itself loaded as `<script type="module" src="app.js">` in
+`index.html`, and the standalone `<script src="lib/pdf.min.js">` tag
+that used to precede it is gone.
+
+**To update either library later:** JSZip — replace `lib/jszip.min.js`
+with a newer version and redeploy, no code changes needed unless its API
+changed. pdf.js — check whether the new `pdfjs-dist` release still ships
+`build/pdf.min.mjs` + `build/pdf.worker.min.mjs` under the same names
+(it has since v4); if so it's still just a file swap, since app.js
+already imports it as a module. Also re-check the CVE feed for
+`pdfjs-dist` on npm/Snyk periodically — this app has no dependency
+scanner running, so nothing will flag a new vendored-library CVE
+automatically.
 
 JSON/ZIP export and import both carry PDF attachments correctly (ZIP
 entries get a `.pdf` extension instead of the image default of `.jpg`, and
@@ -87,5 +107,5 @@ same one applied here: move the code to an external `.js` file.
 
 ## Current versions
 
-- `APP_VERSION`: `v12` (`app.js`)
-- `CACHE_NAME`: `border-day-ledger-cache-v12` (`sw.js`)
+- `APP_VERSION`: `v17` (`app.js`)
+- `CACHE_NAME`: `border-day-ledger-cache-v17` (`sw.js`)

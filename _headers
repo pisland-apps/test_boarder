@@ -1,0 +1,65 @@
+# _headers — Netlify / Cloudflare Pages HTTP header rules
+#
+# GitHub Pages ignores this file entirely (no custom-headers support),
+# which is why the CSP has lived only in the <meta http-equiv> tag in
+# index.html so far. Netlify and Cloudflare Pages both read a file
+# literally named `_headers` at the root of the published output and
+# apply real HTTP response headers from it — same syntax on both, no
+# config beyond dropping this file next to index.html.
+#
+# The <meta> CSP tag in index.html is left in place on purpose: it still
+# works as a fallback on any host (including GitHub Pages) that doesn't
+# read this file, and having both is harmless — browsers enforce the
+# combination. The header below is the same policy, plus a couple of
+# directives (frame-ancestors) that only take effect as a real header —
+# CSP delivered via <meta> silently ignores those.
+#
+# Bump this file's rules any time index.html's CSP <meta> tag changes —
+# they should stay in sync the same way APP_VERSION/CACHE_NAME do (see
+# README.md).
+
+/*
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'
+  X-Frame-Options: DENY
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: no-referrer
+  Permissions-Policy: geolocation=(), microphone=(), camera=(), payment=()
+  Strict-Transport-Security: max-age=63072000; includeSubDomains
+
+# --- Cache control -----------------------------------------------------
+# None of this app's mutable files are content-hashed in their filename
+# (app.js, lib/pdf.min.mjs, etc. keep the same name every deploy), and
+# sw.js's fetch handler does its own stale-while-revalidate over the
+# network on top of whatever the HTTP layer hands it. If a CDN/browser
+# caches these aggressively, an updated CACHE_NAME bump can still end up
+# serving old file contents until that HTTP-level cache expires — so the
+# shell files below are set to always revalidate. Only the PNG icons
+# (genuinely static day-to-day) get a real cache lifetime.
+
+/index.html
+  Cache-Control: no-cache
+
+/sw.js
+  Cache-Control: no-cache
+
+/app.js
+  Cache-Control: no-cache
+
+/manifest.json
+  Cache-Control: no-cache
+
+/lib/*
+  Cache-Control: no-cache
+
+# Listed individually rather than a /*.png glob — Netlify/Cloudflare
+# Pages wildcard matching on a bare suffix pattern like /*.png has been
+# reported to over-match other file types, which would be worse than no
+# rule at all here.
+/icon-192.png
+  Cache-Control: public, max-age=86400
+/icon-512.png
+  Cache-Control: public, max-age=86400
+/icon-maskable-512.png
+  Cache-Control: public, max-age=86400
+/apple-touch-icon.png
+  Cache-Control: public, max-age=86400

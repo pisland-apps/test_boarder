@@ -42,7 +42,7 @@ import * as pdfjsLib from './lib/pdf.min.mjs';
   // (Ctrl/Cmd+Shift+R) or clear the Service Worker/cache in devtools,
   // rather than assuming the deploy didn't work.
   // ---------------------------------------------------------------------
-  const APP_VERSION = 'v17';
+  const APP_VERSION = 'v18';
   const APP_VERSION_DATE = '2026-08-11';
 
   // Set immediately (not gated behind unlock) so the badge is visible on
@@ -338,33 +338,40 @@ import * as pdfjsLib from './lib/pdf.min.mjs';
   // Optional biometric unlock (Face ID / Touch ID / Android fingerprint).
   // Dual-mode, decided once per enrollment:
   //
-  //   1. PRF mode (preferred): the wrapping key is derived directly from
-  //      the WebAuthn PRF extension output, so the key is cryptographically
-  //      bound to the biometric result itself.
-  //   2. Gate mode (fallback): the fingerprint/Face prompt is only a UX
-  //      gate. A separate, randomly generated, NON-EXTRACTABLE AES-GCM key
-  //      wraps the *actual passcode*; that wrapping key is stored as a real
-  //      CryptoKey object (not exported bytes) via IndexedDB's structured
-  //      clone, so page JS can use it to decrypt again later but can never
-  //      read it out as raw bytes.
+  //   PRF mode only: the wrapping key is derived directly from the WebAuthn
+  //   PRF extension output, so the AES-GCM key that unwraps the passcode
+  //   cannot exist without redoing the biometric ceremony — the biometric
+  //   check is cryptographically load-bearing, not just a UI gate.
+  //
+  // As of v18 this file no longer has a "gate" fallback mode. An earlier
+  // version fell back to a mode where the fingerprint/Face prompt was only
+  // a UX gate in front of a separately generated, non-extractable AES-GCM
+  // key stored as a plain CryptoKey object in IndexedDB. That key could be
+  // read and used directly via idbGet()+crypto.subtle.decrypt() by anyone
+  // with script execution in the page (devtools, or a future XSS bug)
+  // WITHOUT ever calling navigator.credentials.get() — i.e. the biometric
+  // check could be bypassed entirely, it wasn't actually protecting
+  // anything. That mode has been removed: enableBiometricUnlock() now only
+  // succeeds when the platform actually returns usable PRF output, and
+  // tryBiometricUnlock() no longer has a code path that trusts an
+  // unauthenticated wrapping key. See README.md for details. Existing
+  // installs that had enrolled the old 'gate' mode will have that stale,
+  // insecure record removed automatically and fall back to the passcode.
   //
   // PRF support is inconsistent across Android/Chrome versions/OEMs — on
   // some real devices `navigator.credentials.create()` with a `prf`
   // extension request fails outright, and on others `create()` succeeds but
-  // never actually returns usable PRF output. enableBiometricUnlock() tries
-  // PRF first and silently falls back to gate mode whenever either of those
-  // happens, so enrollment succeeds either way. Which mode was used is
-  // recorded in the stored record and tryBiometricUnlock() branches on it.
-  // In both modes the passcode itself always remains the required
-  // fallback/recovery mechanism.
+  // never actually returns usable PRF output. On those devices biometric
+  // unlock simply isn't offered; the passcode remains the only unlock
+  // mechanism, which is always required to exist regardless.
   //
-  // Because gate mode's wrapping key is a real (non-JSON-serializable)
-  // CryptoKey object, this whole feature only works on the 'idb' local
-  // backend (raw IndexedDB) — not the Claude.ai window.storage bridge or
-  // the localStorage fallback, both of which only accept strings. In
-  // practice that's not a real limitation: WebAuthn platform authenticators
-  // only work over https/localhost on a real device anyway, which is
-  // exactly the standalone-deploy 'idb' scenario.
+  // Because the PRF-derived key can only be reconstructed via a fresh
+  // WebAuthn ceremony (not stored as a CryptoKey object), this feature only
+  // works on the 'idb' local backend (raw IndexedDB) — not the Claude.ai
+  // window.storage bridge or the localStorage fallback, both of which only
+  // accept strings. In practice that's not a real limitation: WebAuthn
+  // platform authenticators only work over https/localhost on a real
+  // device anyway, which is exactly the standalone-deploy 'idb' scenario.
   // ---------------------------------------------------------------------
   const BIO_META_KEY = 'border-ledger:biometric-unlock';
 
@@ -448,35 +455,32 @@ import * as pdfjsLib from './lib/pdf.min.mjs';
           });
           const aext = assertion.getClientExtensionResults();
           prfBytes = aext && aext.prf && aext.prf.results && aext.prf.results.first;
-        }catch(e3){ /* leave prfBytes null — falls through to gate mode below */ }
+        }catch(e3){ /* leave prfBytes null — enrollment will fail cleanly below */ }
       }
     }
 
-    const iv = randomBytes(12);
-
-    if(prfBytes){
-      const bioKey = await deriveAesKeyFromPrfBytes(prfBytes);
-      const ctBuf = await crypto.subtle.encrypt({ name:'AES-GCM', iv }, bioKey, new TextEncoder().encode(currentPasscode));
-      await idbSet(BIO_META_KEY, {
-        v: 3,
-        method: 'prf',
-        credentialId: bufToB64(cred.rawId),
-        salt: bufToB64(salt),
-        iv: bufToB64(iv),
-        ct: bufToB64(ctBuf)
-      });
-    } else {
-      const wrappingKey = await crypto.subtle.generateKey({ name:'AES-GCM', length:256 }, false, ['encrypt','decrypt']);
-      const ctBuf = await crypto.subtle.encrypt({ name:'AES-GCM', iv }, wrappingKey, new TextEncoder().encode(currentPasscode));
-      await idbSet(BIO_META_KEY, {
-        v: 3,
-        method: 'gate',
-        credentialId: bufToB64(cred.rawId),
-        wrappingKey,
-        iv: bufToB64(iv),
-        ct: bufToB64(ctBuf)
-      });
+    // No usable PRF output: unlike earlier versions, we no longer fall
+    // back to an unauthenticated "gate" mode (that mode's biometric check
+    // could be bypassed entirely by anyone with script execution in the
+    // page — see the comment block above). Fail enrollment cleanly instead
+    // of silently storing something weaker than what the UI implies.
+    if(!prfBytes){
+      console.error('[border-ledger] biometric registration succeeded but no usable PRF output was returned; not enrolling');
+      alert('这台设备/浏览器的指纹/Face ID 不支持所需的安全能力（PRF），无法启用指纹/Face ID 解锁。请继续使用密码解锁。');
+      return false;
     }
+
+    const iv = randomBytes(12);
+    const bioKey = await deriveAesKeyFromPrfBytes(prfBytes);
+    const ctBuf = await crypto.subtle.encrypt({ name:'AES-GCM', iv }, bioKey, new TextEncoder().encode(currentPasscode));
+    await idbSet(BIO_META_KEY, {
+      v: 3,
+      method: 'prf',
+      credentialId: bufToB64(cred.rawId),
+      salt: bufToB64(salt),
+      iv: bufToB64(iv),
+      ct: bufToB64(ctBuf)
+    });
     return true;
   }
 
@@ -492,8 +496,23 @@ import * as pdfjsLib from './lib/pdf.min.mjs';
     const rec = await idbGet(BIO_META_KEY).catch(()=>null);
     if(!rec) return false;
     // v1/v2 records predate the method field — infer from shape so existing
-    // enrollments (created by earlier app versions) keep working.
+    // PRF enrollments (created by earlier app versions) keep working.
     const method = rec.method || (rec.wrappingKey ? 'gate' : (rec.salt ? 'prf' : null));
+
+    // 'gate' mode has been removed (see the comment block above this
+    // function) — its wrapping key was stored in IndexedDB in a way that
+    // let anyone with script execution in the page decrypt the passcode
+    // without ever completing a WebAuthn ceremony, i.e. the biometric check
+    // didn't actually gate anything. Rather than honor a stale record that
+    // provides false reassurance, remove it and fall back to the passcode
+    // field; the user can re-enroll, which will only succeed if this
+    // device actually supports PRF.
+    if(method === 'gate'){
+      console.warn('[border-ledger] removing legacy insecure biometric "gate" enrollment; re-enroll to use biometric unlock (requires PRF support)');
+      await idbDelete(BIO_META_KEY).catch(()=>{});
+      return false;
+    }
+
     if(!method) return false;
 
     if(method === 'prf'){
@@ -526,28 +545,8 @@ import * as pdfjsLib from './lib/pdf.min.mjs';
       }
     }
 
-    // gate mode
-    if(!rec.wrappingKey) return false;
-    try{
-      await navigator.credentials.get({
-        publicKey: {
-          challenge: randomBytes(32),
-          allowCredentials: [{ id: b64ToBuf(rec.credentialId), type:'public-key' }],
-          userVerification: 'required',
-          timeout: 60000
-        }
-      });
-    }catch(e){ return false; }
-
-    try{
-      const iv = new Uint8Array(b64ToBuf(rec.iv));
-      const ptBuf = await crypto.subtle.decrypt({ name:'AES-GCM', iv }, rec.wrappingKey, b64ToBuf(rec.ct));
-      const passcode = new TextDecoder().decode(ptBuf);
-      return await tryUnlock(passcode);
-    }catch(e){
-      console.error('[border-ledger] biometric (gate) unwrap failed', e);
-      return false;
-    }
+    // No other method is supported (see comment block above).
+    return false;
   }
 
 

@@ -105,7 +105,33 @@ violation first — it's the signature symptom of a stale hash, and if a
 file still uses inline hash-locked scripts, the permanent fix is the
 same one applied here: move the code to an external `.js` file.
 
+## Security fix in v18: removed the biometric "gate" fallback mode
+
+Versions through v17 had two biometric-unlock modes: PRF mode (the wrapping
+key is derived from the WebAuthn PRF extension output) and a "gate" mode
+fallback for devices where PRF isn't available (a separately generated,
+non-extractable AES-GCM key stored as a plain `CryptoKey` object in
+IndexedDB, with the fingerprint/Face ID prompt only gating *when* the app
+chose to use it).
+
+That gate mode's biometric check was not actually cryptographically
+enforced: the wrapping `CryptoKey` was readable straight out of IndexedDB
+by anyone with script execution in the page (devtools, or a future XSS
+bug), who could then call `crypto.subtle.decrypt()` directly and recover
+the passcode **without ever completing a WebAuthn ceremony**. The prompt
+looked like a security gate but wasn't binding anything.
+
+As of v18, `enableBiometricUnlock()` only succeeds when the platform
+actually returns usable PRF output; there is no more fallback mode.
+Devices without PRF support simply don't get biometric unlock offered —
+the passcode remains available (and required) either way.
+`tryBiometricUnlock()` also detects and deletes any stale `'gate'`
+enrollment left over from an earlier version the first time it's
+encountered, and falls back to the passcode prompt. Existing users who had
+gate-mode enrolled will need to re-enroll biometric unlock after
+upgrading, which will only succeed on devices with real PRF support.
+
 ## Current versions
 
-- `APP_VERSION`: `v17` (`app.js`)
-- `CACHE_NAME`: `border-day-ledger-cache-v17` (`sw.js`)
+- `APP_VERSION`: `v18` (`app.js`)
+- `CACHE_NAME`: `border-day-ledger-cache-v18` (`sw.js`)

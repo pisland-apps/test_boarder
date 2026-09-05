@@ -7,11 +7,21 @@
 // near the top of app.js (the small version badge shown bottom-right,
 // even on the lock screen) — they live in different files. Bump BOTH by
 // hand on every deploy. See the deploy checklist in README.md.
-const CACHE_NAME = 'border-day-ledger-cache-v18';
+const CACHE_NAME = 'border-day-ledger-cache-v21';
 
+// './index.html' is deliberately NOT in this list. Cloudflare Pages
+// 301/308-redirects /index.html -> / (it strips the .html extension), so
+// cache.addAll() below would silently follow that redirect and cache the
+// result under the './index.html' key with redirected:true baked into the
+// Response. Chrome refuses to answer a navigation with a redirected
+// Response from a service worker (fails with net::ERR_FAILED) — which is
+// exactly what broke the installed-app shortcut, since it always relaunches
+// at the literal /index.html URL. './' is the one canonical entry for the
+// app shell's HTML; see the navigate-mode branch in the fetch handler below,
+// which resolves ALL navigations through './' regardless of the exact path
+// requested (covers old /index.html bookmarks/shortcuts too).
 const APP_SHELL = [
   './',
-  './index.html',
   './app.js',
   './manifest.json',
   './icon-192.png',
@@ -48,6 +58,28 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(req.url);
 
   if(url.origin === self.location.origin){
+    // Navigations (address-bar loads, installed-shortcut relaunches, links)
+    // are always resolved through the canonical './' cache entry — not
+    // whatever exact path the browser requested. That's what makes a stale
+    // /index.html shortcut/bookmark keep working instead of hitting a dead
+    // cache slot, and it ensures we never fetch or cache a Response with
+    // redirected:true for a navigation (see APP_SHELL comment above).
+    if(req.mode === 'navigate'){
+      event.respondWith(
+        caches.match('./').then((cached) => {
+          const network = fetch('./').then((res) => {
+            if(res && res.ok){
+              const resClone = res.clone();
+              caches.open(CACHE_NAME).then((cache) => cache.put('./', resClone));
+            }
+            return res;
+          }).catch(() => cached);
+          return cached || network;
+        })
+      );
+      return;
+    }
+
     // app shell: cache-first, refresh the cache in the background when online
     event.respondWith(
       caches.match(req).then((cached) => {
@@ -69,6 +101,8 @@ self.addEventListener('fetch', (event) => {
   // was moved to ./lib/jszip.min.js (same-origin, handled by the app-shell
   // branch above) alongside pdf.js, and connect-src is 'self' only. This
   // branch only fires if something cross-origin is ever added back later.
+  // (Not reachable for navigations — those are caught by the same-origin
+  // branch above — so no redirected-cache-key fallback is needed here.)
   event.respondWith(
     fetch(req).then((res) => {
       if(res && res.ok){

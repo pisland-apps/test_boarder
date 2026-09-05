@@ -466,6 +466,30 @@
   .lock-footnote a{color:var(--ink-soft); cursor:pointer; text-decoration:underline;}
   .lock-footnote a:hover{color:var(--stamp);}
 
+  /* On-screen numpad for the passcode fields — lets touch users key in
+     digits without popping the device's own keyboard (see setNumericEntryMode
+     in app.js). Sized for comfortable thumb taps on phones/tablets. */
+  .lock-numpad{
+    display:grid; grid-template-columns:repeat(3, 1fr); gap:8px;
+    margin:2px 0 4px;
+  }
+  .numpad-key{
+    font-family:var(--mono); font-size:19px; font-weight:600;
+    padding:15px 0; border-radius:6px; border:1px solid var(--gold-line);
+    background:var(--paper); color:var(--ink); cursor:pointer;
+    -webkit-tap-highlight-color:transparent; user-select:none; touch-action:manipulation;
+  }
+  .numpad-key:hover{border-color:var(--checkpoint-soft);}
+  .numpad-key:active{background:var(--paper-dark); border-color:var(--checkpoint-soft);}
+  .numpad-key--ghost{visibility:hidden; cursor:default;}
+  .numpad-key--alt{font-size:16px; color:var(--ink-soft); background:transparent;}
+  .numpad-toggle{
+    display:block; width:100%; margin:2px 0 14px; padding:4px;
+    background:none; border:none; font-size:11.5px; color:var(--ink-soft);
+    text-decoration:underline; cursor:pointer; text-align:center;
+  }
+  .numpad-toggle:hover{color:var(--stamp);}
+
   /* toggle switch (export encryption) */
   .switch{position:relative; display:inline-block; width:38px; height:22px; flex-shrink:0;}
   .switch input{opacity:0; width:0; height:0; position:absolute;}
@@ -486,6 +510,79 @@
     td{border:none; padding:3px 0; display:flex; justify-content:space-between; gap:10px;}
     td::before{content:attr(data-label); font-family:var(--mono); font-size:10.5px; color:var(--grey-text); text-transform:uppercase;}
   }
+
+  /* ================= TOP BAR (hamburger + title + Save/Lock) ================= */
+  .app-topbar{
+    position:sticky; top:0; z-index:500;
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+    padding:10px 16px;
+    background:var(--paper);
+    border-bottom:1px solid var(--gold-line);
+  }
+  .app-topbar-left{display:flex; align-items:center; gap:10px; min-width:0;}
+  .app-topbar-title{
+    font-family:var(--serif); font-weight:700; font-size:15px; color:var(--ink);
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
+  .hamburger-btn{
+    background:transparent; border:1px solid var(--gold-line); border-radius:8px;
+    width:36px; height:36px; font-size:18px; line-height:1; cursor:pointer;
+    color:var(--ink); flex-shrink:0;
+  }
+  .hamburger-btn:hover{border-color:var(--stamp); color:var(--stamp);}
+  .topbar-actions{display:flex; align-items:center; gap:8px; flex-shrink:0;}
+  .icon-btn{
+    background:transparent; border:1px solid var(--gold-line); border-radius:8px;
+    width:36px; height:36px; display:flex; align-items:center; justify-content:center;
+    cursor:pointer; color:var(--ink); flex-shrink:0; padding:0;
+  }
+  .icon-btn svg{width:18px; height:18px;}
+  .icon-btn:hover{border-color:var(--stamp); color:var(--stamp);}
+  .icon-btn:active{background:var(--paper-dark);}
+
+  /* ================= SIDEBAR NAVIGATION DRAWER ================= */
+  .sidebar-overlay{
+    position:fixed; inset:0; background:rgba(30,42,68,0.35);
+    opacity:0; pointer-events:none; transition:opacity 0.2s ease; z-index:600;
+  }
+  .sidebar-overlay.open{opacity:1; pointer-events:auto;}
+  .sidebar-drawer{
+    position:fixed; top:0; left:0; bottom:0; width:300px; max-width:85vw;
+    background:var(--paper); border-right:1px solid var(--gold-line);
+    transform:translateX(-100%); transition:transform 0.25s ease; z-index:601;
+    display:flex; flex-direction:column; box-shadow:8px 0 24px -12px rgba(30,42,68,0.35);
+  }
+  .sidebar-drawer.open{transform:translateX(0);}
+  .sidebar-header{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:16px 16px 14px; border-bottom:1px solid var(--gold-line); flex-shrink:0;
+  }
+  .sidebar-header-title{font-family:var(--serif); font-weight:700; font-size:16px; color:var(--ink);}
+  .sidebar-close-btn{
+    background:none; border:none; font-size:20px; line-height:1; cursor:pointer;
+    color:var(--ink-soft); padding:4px 8px;
+  }
+  .sidebar-close-btn:hover{color:var(--stamp);}
+  .sidebar-content{padding:16px 16px 32px; overflow-y:auto; flex:1;}
+  .sidebar-section-label{
+    font-family:var(--mono); font-size:11px; letter-spacing:0.12em; text-transform:uppercase;
+    color:var(--stamp); margin:20px 0 10px; font-weight:700;
+  }
+  .sidebar-section-label:first-child{margin-top:0;}
+  .sidebar-content .panel{margin-bottom:0;}
+
+  .app-body-layout{display:block;}
+
+  @media (min-width:768px){
+    .hamburger-btn{display:none;}
+    .sidebar-overlay{display:none;}
+    .app-body-layout{display:flex; align-items:flex-start;}
+    .sidebar-drawer{
+      position:sticky; top:0; height:100vh; transform:none; box-shadow:none;
+      flex-shrink:0;
+    }
+    .app-main-col{flex:1; min-width:0;}
+  }
 </style>
 </head>
 <body>
@@ -498,6 +595,21 @@
     <input type="password" id="lockPass1" autocomplete="off" placeholder="密码">
     <input type="password" id="lockPass2" autocomplete="off" placeholder="确认密码" style="display:none;">
     <div class="lock-error" id="lockError"></div>
+    <div class="lock-numpad" id="lockNumpad">
+      <button type="button" class="numpad-key" data-key="1">1</button>
+      <button type="button" class="numpad-key" data-key="2">2</button>
+      <button type="button" class="numpad-key" data-key="3">3</button>
+      <button type="button" class="numpad-key" data-key="4">4</button>
+      <button type="button" class="numpad-key" data-key="5">5</button>
+      <button type="button" class="numpad-key" data-key="6">6</button>
+      <button type="button" class="numpad-key" data-key="7">7</button>
+      <button type="button" class="numpad-key" data-key="8">8</button>
+      <button type="button" class="numpad-key" data-key="9">9</button>
+      <button type="button" class="numpad-key numpad-key--ghost" tabindex="-1" aria-hidden="true"></button>
+      <button type="button" class="numpad-key" data-key="0">0</button>
+      <button type="button" class="numpad-key numpad-key--alt" id="numpadBackspace" aria-label="删除一位">⌫</button>
+    </div>
+    <button type="button" class="numpad-toggle" id="numpadKbdToggle">⌨ 改用文字键盘输入</button>
     <div class="lock-actions">
       <button type="button" class="btn ghost" id="lockCancelBtn" style="display:none;">取消</button>
       <button type="button" class="btn" id="lockSubmitBtn">解锁</button>
@@ -506,60 +618,28 @@
   </div>
 </div>
 
-<header>
-  <svg class="logo-mark" viewBox="0 0 240 240" xmlns="http://www.w3.org/2000/svg">
-    <defs>
-      <style>
-        .ink   { fill: #1E2A44; }
-        .stamp { fill: #A63A2E; }
-        .check { fill: #3E6259; }
-        .paper { fill: #F2EEE3; }
-      </style>
-    </defs>
-    <circle cx="120" cy="120" r="118" class="paper" stroke="#C9BFA6" stroke-width="1.5"/>
-    <circle cx="120" cy="120" r="104" fill="none" stroke="#1E2A44" stroke-width="2.5"
-            stroke-dasharray="3 6" stroke-linecap="round"/>
-    <circle cx="120" cy="120" r="90" fill="none" stroke="#1E2A44" stroke-width="1.5"/>
-    <path id="topArc" d="M 45,120 A 75,75 0 0 1 195,120" fill="none"/>
-    <text font-family="Georgia, 'Iowan Old Style', 'Palatino Linotype', serif"
-          font-size="14.5" letter-spacing="4" fill="#1E2A44">
-      <textPath href="#topArc" startOffset="50%" text-anchor="middle">BORDER LEDGER</textPath>
-    </text>
-    <path id="bottomArc" d="M 195,120 A 75,75 0 0 1 45,120" fill="none"/>
-    <text font-family="'PingFang SC','Microsoft YaHei',sans-serif"
-          font-size="13" letter-spacing="5" fill="#A63A2E">
-      <textPath href="#bottomArc" startOffset="50%" text-anchor="middle">关 口 记 录 簿</textPath>
-    </text>
-    <circle cx="45" cy="120" r="2.2" class="stamp"/>
-    <circle cx="195" cy="120" r="2.2" class="stamp"/>
-    <g transform="translate(120,124)">
-      <rect x="-32" y="-34" width="9" height="52" rx="1.5" class="ink"/>
-      <rect x="23" y="-34" width="9" height="52" rx="1.5" class="ink"/>
-      <rect x="-36" y="-44" width="72" height="10" rx="1.5" class="ink"/>
-      <g transform="rotate(-28)">
-        <rect x="-3" y="-3" width="46" height="7" rx="3" class="stamp"/>
-        <circle cx="-3" cy="0.5" r="5" class="stamp"/>
-      </g>
-      <rect x="-40" y="20" width="80" height="6" rx="2" class="check"/>
-      <g transform="translate(-52,4)">
-        <path d="M0,-14 C7,-14 12,-9 12,-2 C12,7 0,18 0,18 C0,18 -12,7 -12,-2 C-12,-9 -7,-14 0,-14 Z" class="check"/>
-        <circle cx="0" cy="-2" r="4.2" class="paper"/>
-      </g>
-      <g transform="translate(52,4)">
-        <path d="M0,-14 C7,-14 12,-9 12,-2 C12,7 0,18 0,18 C0,18 -12,7 -12,-2 C-12,-9 -7,-14 0,-14 Z" class="stamp"/>
-        <circle cx="0" cy="-2" r="4.2" class="paper"/>
-      </g>
-    </g>
-  </svg>
-  <div class="header-text">
-    <div class="eyebrow">Border Day Ledger · 出入境天数记录簿</div>
-    <h1>关口记录簿</h1>
-    <div class="sub">按年统计你在马来西亚、新加坡及其他国家的停留天数 —— 方便核对税务居民身份等所需的天数门槛。数据仅保存在你的账号下。</div>
+<div class="app-topbar">
+  <div class="app-topbar-left">
+    <button type="button" class="hamburger-btn" id="hamburgerBtn" aria-label="打开菜单">☰</button>
+    <span class="app-topbar-title">关口记录簿</span>
   </div>
-</header>
+  <div class="topbar-actions">
+    <button type="button" class="icon-btn" id="topSaveBtn" title="保存（自动使用访问密码加密备份）" aria-label="保存加密备份"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg></button>
+    <button type="button" class="icon-btn" id="topLockBtn" title="立即锁定" aria-label="立即锁定"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></button>
+  </div>
+</div>
 
-<main>
+<div class="sidebar-overlay" id="sidebarOverlay"></div>
 
+<div class="app-body-layout">
+<aside class="sidebar-drawer" id="sidebarDrawer">
+  <div class="sidebar-header">
+    <span class="sidebar-header-title">设置与备份</span>
+    <button type="button" class="sidebar-close-btn" id="sidebarCloseBtn" aria-label="关闭菜单">&times;</button>
+  </div>
+  <div class="sidebar-content">
+
+  <div class="sidebar-section-label">基础设置</div>
   <section class="panel">
     <div class="panel-title"><span class="tick"></span>基础设置</div>
     <div class="settings-row">
@@ -574,7 +654,6 @@
         <label>&nbsp;</label>
         <div style="display:flex; gap:6px;">
           <button type="button" class="btn ghost" id="changePassBtn">更改密码</button>
-          <button type="button" class="btn ghost" id="lockNowBtn">🔒 立即锁定</button>
         </div>
       </div>
       <div class="field">
@@ -595,6 +674,7 @@
     </div>
   </section>
 
+  <div class="sidebar-section-label">导出与打印</div>
   <section class="panel">
     <div class="panel-title"><span class="tick"></span>导出与打印</div>
     <div class="settings-row">
@@ -671,6 +751,64 @@
     </div>
   </section>
 
+  </div>
+</aside>
+
+<div class="app-main-col">
+<header>
+  <svg class="logo-mark" viewBox="0 0 240 240" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <style>
+        .ink   { fill: #1E2A44; }
+        .stamp { fill: #A63A2E; }
+        .check { fill: #3E6259; }
+        .paper { fill: #F2EEE3; }
+      </style>
+    </defs>
+    <circle cx="120" cy="120" r="118" class="paper" stroke="#C9BFA6" stroke-width="1.5"/>
+    <circle cx="120" cy="120" r="104" fill="none" stroke="#1E2A44" stroke-width="2.5"
+            stroke-dasharray="3 6" stroke-linecap="round"/>
+    <circle cx="120" cy="120" r="90" fill="none" stroke="#1E2A44" stroke-width="1.5"/>
+    <path id="topArc" d="M 45,120 A 75,75 0 0 1 195,120" fill="none"/>
+    <text font-family="Georgia, 'Iowan Old Style', 'Palatino Linotype', serif"
+          font-size="14.5" letter-spacing="4" fill="#1E2A44">
+      <textPath href="#topArc" startOffset="50%" text-anchor="middle">BORDER LEDGER</textPath>
+    </text>
+    <path id="bottomArc" d="M 195,120 A 75,75 0 0 1 45,120" fill="none"/>
+    <text font-family="'PingFang SC','Microsoft YaHei',sans-serif"
+          font-size="13" letter-spacing="5" fill="#A63A2E">
+      <textPath href="#bottomArc" startOffset="50%" text-anchor="middle">关 口 记 录 簿</textPath>
+    </text>
+    <circle cx="45" cy="120" r="2.2" class="stamp"/>
+    <circle cx="195" cy="120" r="2.2" class="stamp"/>
+    <g transform="translate(120,124)">
+      <rect x="-32" y="-34" width="9" height="52" rx="1.5" class="ink"/>
+      <rect x="23" y="-34" width="9" height="52" rx="1.5" class="ink"/>
+      <rect x="-36" y="-44" width="72" height="10" rx="1.5" class="ink"/>
+      <g transform="rotate(-28)">
+        <rect x="-3" y="-3" width="46" height="7" rx="3" class="stamp"/>
+        <circle cx="-3" cy="0.5" r="5" class="stamp"/>
+      </g>
+      <rect x="-40" y="20" width="80" height="6" rx="2" class="check"/>
+      <g transform="translate(-52,4)">
+        <path d="M0,-14 C7,-14 12,-9 12,-2 C12,7 0,18 0,18 C0,18 -12,7 -12,-2 C-12,-9 -7,-14 0,-14 Z" class="check"/>
+        <circle cx="0" cy="-2" r="4.2" class="paper"/>
+      </g>
+      <g transform="translate(52,4)">
+        <path d="M0,-14 C7,-14 12,-9 12,-2 C12,7 0,18 0,18 C0,18 -12,7 -12,-2 C-12,-9 -7,-14 0,-14 Z" class="stamp"/>
+        <circle cx="0" cy="-2" r="4.2" class="paper"/>
+      </g>
+    </g>
+  </svg>
+  <div class="header-text">
+    <div class="eyebrow">Border Day Ledger · 出入境天数记录簿</div>
+    <h1>关口记录簿</h1>
+    <div class="sub">按年统计你在马来西亚、新加坡及其他国家的停留天数 —— 方便核对税务居民身份等所需的天数门槛。数据仅保存在你的账号下。</div>
+  </div>
+</header>
+
+<main>
+
   <section class="panel">
     <div class="panel-title"><span class="tick"></span><span id="formTitle">新增行程</span></div>
     <form class="trip-form" id="tripForm">
@@ -745,6 +883,8 @@
   </section>
 
 </main>
+</div><!-- /.app-main-col -->
+</div><!-- /.app-body-layout -->
 
 <div id="printArea"></div>
 

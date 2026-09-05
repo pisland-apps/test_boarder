@@ -2,7 +2,7 @@
   "name": "关口记录簿 Border Day Ledger",
   "short_name": "关口记录簿",
   "description": "统计马来西亚、新加坡及其他国家的停留天数，用于税务居民身份核对。",
-  "start_url": "./index.html",
+  "start_url": "./",
   "scope": "./",
   "display": "standalone",
   "orientation": "any",

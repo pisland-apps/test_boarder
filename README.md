@@ -131,7 +131,30 @@ encountered, and falls back to the passcode prompt. Existing users who had
 gate-mode enrolled will need to re-enroll biometric unlock after
 upgrading, which will only succeed on devices with real PRF support.
 
+## Security fix in v20: tightened attachment data-URL validation
+
+Imported backups (plain JSON, encrypted envelope, or ZIP) restore each trip's
+attachment as a `data:` URL, gated by `isSupportedAttachmentDataURL()`. Through
+v19 that check only tested the *prefix* (`s.startsWith('data:image')` /
+`'data:application/pdf'`), so a crafted backup file could smuggle extra
+characters after the base64 payload — e.g. a closing quote followed by an HTML
+attribute. That string is concatenated straight into an `<img src="...">`
+attribute (no escaping) in `attachmentThumbMarkup()`, the thumbnail renderer
+used on the edit-attachments screen, so a malformed value could break out of
+the attribute and inject markup there — including a forged `data-action`
+button, since this app dispatches button clicks by that attribute. The
+existing CSP (`script-src 'self'`, no `unsafe-inline`) would block any
+injected `onerror=`/`onclick=` handler from actually executing, but the
+markup injection itself wasn't prevented.
+
+Fixed two ways: `isSupportedAttachmentDataURL()` now validates the whole
+string against a strict regex (`data:<image or pdf mime>;base64,<valid base64
+chars>`, nothing else allowed), so malformed values are rejected on import
+before they're ever stored. `attachmentThumbMarkup()` also now runs `dataURL`
+through `escapeHtml()` as defense-in-depth — a no-op for real attachments,
+since legitimate base64 data URLs never contain the characters it escapes.
+
 ## Current versions
 
-- `APP_VERSION`: `v18` (`app.js`)
-- `CACHE_NAME`: `border-day-ledger-cache-v18` (`sw.js`)
+- `APP_VERSION`: `v20` (`app.js`)
+- `CACHE_NAME`: `border-day-ledger-cache-v20` (`sw.js`)

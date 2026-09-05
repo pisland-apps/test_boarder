@@ -42,8 +42,8 @@ import * as pdfjsLib from './lib/pdf.min.mjs';
   // (Ctrl/Cmd+Shift+R) or clear the Service Worker/cache in devtools,
   // rather than assuming the deploy didn't work.
   // ---------------------------------------------------------------------
-  const APP_VERSION = 'v18';
-  const APP_VERSION_DATE = '2026-08-11';
+  const APP_VERSION = 'v21';
+  const APP_VERSION_DATE = '2026-09-05';
 
   // Set immediately (not gated behind unlock) so the badge is visible on
   // the lock screen before the password is entered.
@@ -705,9 +705,19 @@ import * as pdfjsLib from './lib/pdf.min.mjs';
   }
 
   // used when importing JSON backups — accepts either kind of attachment
-  // data URL, rejecting anything else that might have ended up in the file
+  // data URL, rejecting anything else that might have ended up in the file.
+  // SECURITY: validates the FULL string, not just the prefix — a prefix-only
+  // check (s.startsWith('data:image')) would let a crafted backup file smuggle
+  // extra characters after the base64 payload (e.g. a closing quote followed by
+  // an HTML attribute) straight through import. That string later gets
+  // concatenated unescaped into an <img src="..."> attribute in
+  // attachmentThumbMarkup() below, so a malformed value here becomes markup
+  // injection in the attachment thumbnail list. The regex requires the whole
+  // string to be `data:<image or pdf mime>;base64,<valid base64 chars>` with
+  // nothing else allowed after it.
+  const ATTACHMENT_DATA_URL_RE = /^data:(image\/[a-z0-9.+-]+|application\/pdf);base64,[A-Za-z0-9+/]+={0,2}$/i;
   function isSupportedAttachmentDataURL(s){
-    return typeof s === 'string' && (s.startsWith('data:image') || s.startsWith('data:application/pdf'));
+    return typeof s === 'string' && ATTACHMENT_DATA_URL_RE.test(s);
   }
 
   // PDFs are stored as-is (no client-side compression available like the
@@ -795,9 +805,15 @@ import * as pdfjsLib from './lib/pdf.min.mjs';
   });
 
   function attachmentThumbMarkup(dataURL, altText){
+    // dataURL is escapeHtml()'d here as defense-in-depth on top of the
+    // ATTACHMENT_DATA_URL_RE validation at import time (see
+    // isSupportedAttachmentDataURL above) — a legitimate base64 data URL never
+    // contains any of the characters escapeHtml() touches, so this is a no-op
+    // for real attachments and only matters if a malformed value ever reaches
+    // this function some other way.
     return isPdfDataURL(dataURL)
       ? '<div class="pdf-thumb-icon">📄<span>PDF</span></div>'
-      : '<img class="image-thumb" src="' + dataURL + '" alt="' + altText + '">';
+      : '<img class="image-thumb" src="' + escapeHtml(dataURL) + '" alt="' + altText + '">';
   }
 
   function renderImageThumbList(){
@@ -1759,11 +1775,32 @@ import * as pdfjsLib from './lib/pdf.min.mjs';
       alert('这个加密备份文件格式无法识别。');
       return;
     }
+
+    // If this envelope was produced by the top-bar "保存" quick-save button
+    // (envelope.appLinked, see quickSaveEncryptedBackup above), its salt IS
+    // the current device's own lock-meta salt — so if the app is already
+    // unlocked with a matching sessionKey, decrypt straight away with no
+    // password prompt at all, same as restoring on the same device it was
+    // saved from.
+    if(envelope.appLinked && sessionKey){
+      try{
+        const iv = new Uint8Array(b64ToBuf(envelope.iv));
+        const ctBuf = b64ToBuf(envelope.ciphertext);
+        const ptBuf = await crypto.subtle.decrypt({ name:'AES-GCM', iv }, sessionKey, ctBuf);
+        const text = new TextDecoder().decode(ptBuf);
+        const parsed = JSON.parse(text);
+        await processJSONImportPayload(parsed);
+        return;
+      }catch(e){ /* fall through to the normal passcode-prompt path below */ }
+    }
+
     let attempts = 0;
     while(attempts < 5){
       const pass = await showPassPrompt({
         title: '输入备份密码',
-        subtitle: '这是一份加密备份，请输入导出时设置的密码来解密。',
+        subtitle: envelope.appLinked
+          ? '这是通过顶部「保存」按钮生成的加密备份，请输入你的访问密码来解密。'
+          : '这是一份加密备份，请输入导出时设置的密码来解密。',
         cancelable: true, submitLabel: '解密并导入', minLength: 1
       });
       if(pass === null) return;
@@ -2244,6 +2281,58 @@ import * as pdfjsLib from './lib/pdf.min.mjs';
   const lockCancelBtn = document.getElementById('lockCancelBtn');
   const lockFootnoteEl = document.getElementById('lockFootnote');
 
+  // ---------------------------------------------------------------------
+  // On-screen numpad for lockPass1/lockPass2. Goal: on phones/tablets, tapping
+  // into the passcode field should NOT pop up the device's own keyboard —
+  // the big on-screen numpad is the intended input method there. Two layers
+  // of defense, since mobile browsers don't all honor the same hint:
+  //   1. inputmode="none" — the standard signal that this field supplies
+  //      its own on-screen input control (per the HTML spec).
+  //   2. On coarse-pointer (touch) devices only, also set `readonly` as a
+  //      belt-and-braces fallback for browsers that ignore #1. readonly
+  //      still allows focus, caret, and programmatic value changes (which
+  //      is all the numpad buttons need) — it only blocks the OS keyboard.
+  // Desktop/mouse users are left untouched so physical-keyboard typing
+  // keeps working exactly as before. A "改用文字键盘输入" link is offered
+  // as an escape hatch for anyone with a legacy non-numeric passcode who
+  // needs their real keyboard on a touch device.
+  const lockNumpadEl = document.getElementById('lockNumpad');
+  const numpadKbdToggle = document.getElementById('numpadKbdToggle');
+  const numpadBackspace = document.getElementById('numpadBackspace');
+  const prefersOwnKeypad = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
+  let activeLockInput = lockPass1El;
+  [lockPass1El, lockPass2El].forEach(el=>{
+    el.addEventListener('focus', ()=>{ activeLockInput = el; });
+  });
+  function setNumericEntryMode(on){
+    [lockPass1El, lockPass2El].forEach(el=>{
+      if(on){
+        el.setAttribute('inputmode', 'none');
+        if(prefersOwnKeypad) el.setAttribute('readonly', 'readonly');
+      } else {
+        el.removeAttribute('inputmode');
+        el.removeAttribute('readonly');
+      }
+    });
+    lockNumpadEl.style.display = on ? 'grid' : 'none';
+    numpadKbdToggle.textContent = on ? '⌨ 改用文字键盘输入' : '🔢 改用数字键盘';
+  }
+  numpadKbdToggle.addEventListener('click', ()=>{
+    const nowOn = lockNumpadEl.style.display === 'none';
+    setNumericEntryMode(nowOn);
+    activeLockInput.focus();
+  });
+  function numpadEdit(mutate){
+    const el = activeLockInput;
+    el.value = mutate(el.value);
+    el.dispatchEvent(new Event('input', { bubbles:true }));
+    el.focus();
+  }
+  lockNumpadEl.querySelectorAll('.numpad-key[data-key]').forEach(btn=>{
+    btn.addEventListener('click', ()=> numpadEdit(v => v + btn.dataset.key));
+  });
+  numpadBackspace.addEventListener('click', ()=> numpadEdit(v => v.slice(0, -1)));
+
   function showPassPrompt(opts){
     return new Promise((resolve)=>{
       lockTitleEl.textContent = opts.title || '';
@@ -2256,6 +2345,8 @@ import * as pdfjsLib from './lib/pdf.min.mjs';
       lockCancelBtn.style.display = opts.cancelable ? 'inline-block' : 'none';
       lockSubmitBtn.textContent = opts.submitLabel || '确定';
       lockBioBtn.style.display = opts.bioButton ? 'block' : 'none';
+      activeLockInput = lockPass1El;
+      setNumericEntryMode(true);
       lockFootnoteEl.innerHTML = '';
       if(opts.showForgotLink){
         const a = document.createElement('a');
@@ -2417,13 +2508,109 @@ import * as pdfjsLib from './lib/pdf.min.mjs';
     }
   });
 
-  document.getElementById('lockNowBtn').addEventListener('click', async ()=>{
+  // Locks the app immediately (drops the in-memory session key and re-runs
+  // the unlock flow). Exposed as its own named function — rather than an
+  // inline listener — so both the top-bar lock button and any other future
+  // entry point can trigger the exact same behavior.
+  async function lockAppNow(){
     sessionKey = null;
+    closeSidebar();
     lockOverlayEl.classList.add('open');
     await runUnlockFlow();
     lockOverlayEl.classList.remove('open');
     await loadAll();
-  });
+  }
+  const topLockBtnEl = document.getElementById('topLockBtn');
+  if(topLockBtnEl) topLockBtnEl.addEventListener('click', lockAppNow);
+
+  // ================= SIDEBAR NAVIGATION DRAWER =================
+  // Mobile: slide-in drawer opened via the hamburger button, closed via its
+  // own close button, the dark overlay, or the Escape key. Desktop (>=768px)
+  // shows it as a persistent rail instead — see the min-width:768px media
+  // query in <style> — so open/closeSidebar() only have a visible effect on
+  // narrow viewports; calling them on desktop is harmless (the CSS override
+  // makes .open a no-op there).
+  const sidebarDrawerEl = document.getElementById('sidebarDrawer');
+  const sidebarOverlayEl = document.getElementById('sidebarOverlay');
+  const hamburgerBtnEl = document.getElementById('hamburgerBtn');
+  const sidebarCloseBtnEl = document.getElementById('sidebarCloseBtn');
+
+  function openSidebar(){
+    if(!sidebarDrawerEl) return;
+    sidebarDrawerEl.classList.add('open');
+    if(sidebarOverlayEl) sidebarOverlayEl.classList.add('open');
+  }
+  function closeSidebar(){
+    if(!sidebarDrawerEl) return;
+    sidebarDrawerEl.classList.remove('open');
+    if(sidebarOverlayEl) sidebarOverlayEl.classList.remove('open');
+  }
+  if(hamburgerBtnEl) hamburgerBtnEl.addEventListener('click', openSidebar);
+  if(sidebarCloseBtnEl) sidebarCloseBtnEl.addEventListener('click', closeSidebar);
+  if(sidebarOverlayEl) sidebarOverlayEl.addEventListener('click', closeSidebar);
+  document.addEventListener('keydown', (e)=>{ if(e.key === 'Escape') closeSidebar(); });
+
+  // ================= TOP-BAR QUICK SAVE (always-encrypted backup) =================
+  // Mirrors the dashboard's own file-name/format for a JSON backup, but skips
+  // the "导出与打印" panel's separate backup-password prompt entirely: this
+  // always encrypts using the app's OWN access passcode (the same one used
+  // to unlock the app), automatically. If no passcode has been set up yet
+  // (shouldn't normally happen — the app requires one on first run — but
+  // handled defensively) it walks the person through setting one up first,
+  // then proceeds with the newly created passcode. There is no toggle or
+  // plaintext option here; that's intentional (see the button's title).
+  async function quickSaveEncryptedBackup(){
+    let meta = await getLockMeta();
+    if(!meta){
+      await runSetupFlow(); // sets up a passcode AND sets sessionKey
+      meta = await getLockMeta();
+      if(!meta) return; // user somehow bailed out; nothing we can do
+    }
+    if(!sessionKey){
+      alert('应用当前处于锁定状态，请先解锁后再保存。');
+      return;
+    }
+    flashStatus('正在保存（自动使用访问密码加密）…');
+    try{
+      const exportTrips = [];
+      for(const t of trips){
+        exportTrips.push(await tripToExportObject(t));
+      }
+      const payload = {
+        exportedAt: new Date().toISOString(),
+        settings,
+        trips: exportTrips
+      };
+      const jsonText = JSON.stringify(payload, null, 2);
+
+      // Reuse the app's own lock-meta salt/iterations — sessionKey was
+      // itself derived from exactly this salt, so encrypting directly with
+      // sessionKey (rather than deriving a fresh one) keeps this envelope
+      // decryptable with nothing more than the person's normal access
+      // passcode, with no separate backup password to remember.
+      const iv = randomBytes(12);
+      const ctBuf = await crypto.subtle.encrypt({ name:'AES-GCM', iv }, sessionKey, new TextEncoder().encode(jsonText));
+      const envelope = {
+        [EXPORT_ENVELOPE_MARKER]: true,
+        version: 1,
+        kdf: 'PBKDF2-SHA256',
+        iterations: meta.iterations || PBKDF2_ITERATIONS,
+        salt: meta.salt,
+        iv: bufToB64(iv),
+        originalFormat: 'json',
+        appLinked: true,
+        ciphertext: bufToB64(ctBuf)
+      };
+      const today = new Date().toISOString().slice(0,10);
+      triggerDownload(new Blob([JSON.stringify(envelope)], { type:'application/json' }), `border-day-ledger-${today}.encrypted.json`);
+      flashStatus('已保存（使用访问密码加密）');
+    }catch(e){
+      console.error('[border-ledger] quick save failed', e);
+      alert('保存失败，请稍后重试。');
+    }
+  }
+  const topSaveBtnEl = document.getElementById('topSaveBtn');
+  if(topSaveBtnEl) topSaveBtnEl.addEventListener('click', quickSaveEncryptedBackup);
 
   document.getElementById('infoNoteBtn').addEventListener('click', ()=>{
     const box = document.getElementById('infoNoteBox');

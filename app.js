@@ -42,7 +42,7 @@ import * as pdfjsLib from './lib/pdf.min.mjs';
   // (Ctrl/Cmd+Shift+R) or clear the Service Worker/cache in devtools,
   // rather than assuming the deploy didn't work.
   // ---------------------------------------------------------------------
-  const APP_VERSION = 'v22';
+  const APP_VERSION = 'v23';
   const APP_VERSION_DATE = '2026-09-20';
 
   // Set immediately (not gated behind unlock) so the badge is visible on
@@ -1500,10 +1500,30 @@ import * as pdfjsLib from './lib/pdf.min.mjs';
     openImageModal(images.map(i => i.dataURL), 0);
   }
 
+  // Free-text country names ("VIETNAM", "vietnam", "越南") are grouped and
+  // shown under one Chinese name. Display/grouping only — the stored
+  // otherName is never rewritten.
+  const COUNTRY_ALIASES = {
+    'vietnam':'越南','viet nam':'越南','korea':'韩国','south korea':'韩国','南韩':'韩国',
+    'china':'中国','thailand':'泰国','japan':'日本','indonesia':'印尼','印度尼西亚':'印尼',
+    'philippines':'菲律宾','cambodia':'柬埔寨','laos':'老挝','myanmar':'缅甸','taiwan':'台湾',
+    'hong kong':'香港','hongkong':'香港','macau':'澳门','macao':'澳门','india':'印度','brunei':'文莱',
+    'australia':'澳洲','澳大利亚':'澳洲','usa':'美国','us':'美国','united states':'美国',
+    'uk':'英国','united kingdom':'英国','england':'英国'
+  };
+  function countryDisplayName(raw){
+    const n = (raw || '').trim();
+    if(!n) return '其他';
+    const k = n.toLowerCase().replace(/\s+/g, ' ');
+    if(COUNTRY_ALIASES[k]) return COUNTRY_ALIASES[k];
+    if(/^[A-Za-z .'-]+$/.test(n)) return n.toLowerCase().replace(/(^|[ -])([a-z])/g, (m, p, c)=>p + c.toUpperCase());
+    return n;
+  }
+
   function destLabel(trip){
     if(trip.dest === 'MY') return '马来西亚';
     if(trip.dest === 'SG') return '新加坡';
-    return trip.otherName || '其他';
+    return countryDisplayName(trip.otherName);
   }
 
   function destTagClass(trip){
@@ -1517,6 +1537,24 @@ import * as pdfjsLib from './lib/pdf.min.mjs';
     const s = new Date(startISO + 'T00:00:00Z');
     const e = new Date(endISO + 'T00:00:00Z');
     return Math.round((e - s) / 86400000) + 1;
+  }
+
+  function localTodayISO(){
+    const d = new Date();
+    const p = n => String(n).padStart(2, '0');
+    return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+  }
+  function addDaysISO(iso, n){
+    const d = new Date(iso + 'T00:00:00Z');
+    d.setUTCDate(d.getUTCDate() + n);
+    return d.toISOString().slice(0, 10);
+  }
+  // days of [startISO,endISO] that fall inside [rangeStartISO,rangeEndISO] (inclusive; ISO strings sort correctly)
+  function overlapDaysInRange(startISO, endISO, rangeStartISO, rangeEndISO){
+    const from = startISO > rangeStartISO ? startISO : rangeStartISO;
+    const to = endISO < rangeEndISO ? endISO : rangeEndISO;
+    if(to < from) return 0;
+    return daysInclusive(from, to);
   }
 
   function isLeap(y){ return (y%4===0 && y%100!==0) || y%400===0; }
@@ -1564,8 +1602,135 @@ import * as pdfjsLib from './lib/pdf.min.mjs';
       if(settings.base === 'SG') sgDays += remaining;
       else myDays += remaining;
 
-      return { year, totalDays, myDays, sgDays, otherDays, otherBreakdown };
+      // ---- v23: split the year into "already happened" and "not yet" ----
+      // Threshold checks use only the days that have actually happened
+      // (through today, inclusive). The rest of the year is an estimate:
+      // planned trips already entered + everything else at the base location.
+      // myDays/sgDays/otherDays above are unchanged (full-year, incl. estimate)
+      // because the print view still reads them.
+      const yStart = year + '-01-01', yEnd = year + '-12-31';
+      const today = localTodayISO();
+      const elapsedEnd = today < yStart ? null : (today < yEnd ? today : yEnd);
+      const elapsedDays = elapsedEnd ? daysInclusive(yStart, elapsedEnd) : 0;
+      const projectedDays = totalDays - elapsedDays;
+      const splitRange = (rs, re, span)=>{
+        const r = { my:0, sg:0, other:0, otherBreakdown:{} };
+        if(span <= 0) return r;
+        trips.forEach(t=>{
+          const d = overlapDaysInRange(t.start, t.end, rs, re);
+          if(d <= 0) return;
+          if(t.dest === 'MY') r.my += d;
+          else if(t.dest === 'SG') r.sg += d;
+          else {
+            r.other += d;
+            const key = countryDisplayName(t.otherName);
+            r.otherBreakdown[key] = (r.otherBreakdown[key] || 0) + d;
+          }
+        });
+        const rem = Math.max(0, span - r.my - r.sg - r.other);
+        if(settings.base === 'SG') r.sg += rem; else r.my += rem;
+        return r;
+      };
+      const elapsed = splitRange(yStart, elapsedEnd || yStart, elapsedDays);
+      const projected = splitRange(elapsedEnd ? addDaysISO(elapsedEnd, 1) : yStart, yEnd, projectedDays);
+
+      return { year, totalDays, myDays, sgDays, otherDays, otherBreakdown,
+               today, elapsedDays, projectedDays, elapsed, projected };
     });
+  }
+
+  // ---- Year card (v23) ----------------------------------------------
+  const YC_CHIP_COLORS = ['#7C9A4B','#9A4F8A','#B08A3E','#4F8CA3','#8C8A7E','#B0654F'];
+  function ycChipColor(name){
+    let h = 0;
+    for(let i=0; i<name.length; i++) h = (h*31 + name.charCodeAt(i)) >>> 0;
+    return YC_CHIP_COLORS[h % YC_CHIP_COLORS.length];
+  }
+
+  // Threshold state from ELAPSED days only.
+  function ycThresholdState(elapsedN, thr, d){
+    if(elapsedN >= thr) return { kind:'hit', over: elapsedN - thr };
+    if(d.elapsedDays === 0) return { kind:'notstarted' };
+    if(d.projectedDays === 0) return { kind:'missed' };
+    if(elapsedN + d.projectedDays < thr) return { kind:'impossible' };
+    return { kind:'open', need: thr - elapsedN };
+  }
+
+  function ycRowHTML(d, key){
+    const isMY = key === 'MY';
+    const cls = isMY ? 'my' : 'sg';
+    const name = isMY ? '马来西亚' : '新加坡';
+    const thr = isMY ? 182 : 183;
+    const e = isMY ? d.elapsed.my : d.elapsed.sg;
+    const p = isMY ? d.projected.my : d.projected.sg;
+    const st = ycThresholdState(e, thr, d);
+
+    let badge;
+    if(st.kind === 'hit') badge = `<span class="yc-badge hit ${cls}">✓ 已达 ${thr} 天门槛</span>`;
+    else if(st.kind === 'open') badge = `<span class="yc-badge">还差 ${st.need} 天到 ${thr} 门槛</span>`;
+    else if(st.kind === 'impossible') badge = `<span class="yc-badge imp">今年已不可能达到 ${thr} 天门槛</span>`;
+    else if(st.kind === 'missed') badge = `<span class="yc-badge">未达 ${thr} 天门槛</span>`;
+    else badge = `<span class="yc-badge">尚未开始</span>`;
+
+    const ePct = Math.min(100, e / d.totalDays * 100);
+    const pPct = Math.max(0, Math.min(100 - ePct, p / d.totalDays * 100));
+    const tPct = thr / d.totalDays * 100;
+    const over = st.kind === 'hit' ? ` <span class="yc-muted">· 已超过门槛 ${st.over} 天</span>` : '';
+    const projNote = (d.projectedDays > 0 && e + p > 0) ? `<span class="yc-muted">预计全年 ${e + p} 天</span>` : '<span></span>';
+    const isBase = settings.base === key;
+
+    return `
+      <div class="yc-row">
+        <div class="yc-row-head">
+          <span class="yc-name"><i class="yc-dot ${cls}"></i>${name}${isBase ? '<span class="yc-basetag">常驻地</span>' : ''}</span>
+          ${badge}
+        </div>
+        <div class="yc-track" role="img" aria-label="${name} 已发生 ${e} 天，门槛 ${thr} 天">
+          <div class="yc-bar">
+            <div class="yc-fill ${cls}" style="width:${ePct.toFixed(2)}%"></div>
+            <div class="yc-proj ${cls}" style="width:${pPct.toFixed(2)}%"></div>
+          </div>
+          <span class="yc-tick" style="left:${tPct.toFixed(2)}%" title="门槛 ${thr} 天"></span>
+        </div>
+        <div class="yc-row-foot"><span><b class="yc-n">${e}</b> / ${thr} 天${over}</span>${projNote}</div>
+      </div>`;
+  }
+
+  function ycCardHTML(d){
+    let sub;
+    if(d.elapsedDays === 0) sub = `${d.year} · 全年 ${d.totalDays} 天 · 尚未开始（以下均为预计）`;
+    else if(d.projectedDays === 0) sub = `${d.year} · 全年 ${d.totalDays} 天 · 已全部发生`;
+    else sub = `${d.year} · 全年 ${d.totalDays} 天 · 数据截至 ${d.today.slice(5)}`;
+
+    const baseKey = settings.base === 'MY' ? 'MY' : 'SG';
+    const rows = ycRowHTML(d, baseKey) + ycRowHTML(d, baseKey === 'SG' ? 'MY' : 'SG');
+
+    let other = '';
+    const oe = d.elapsed.other, op = d.projected.other;
+    if(oe > 0 || op > 0){
+      const chips = Object.entries(d.elapsed.otherBreakdown)
+        .sort((a, b) => b[1] - a[1])
+        .map(([name, days]) => `<span class="yc-chip"><i style="background:${ycChipColor(name)}"></i>${escapeHtml(name)} <b>${days}</b></span>`)
+        .join('');
+      other = `<div class="yc-other"><span class="yc-other-label">其他国家 · 已发生合计 <b>${oe}</b> 天</span>${chips}${op > 0 ? `<span class="yc-muted">另有计划中 ${op} 天</span>` : ''}</div>`;
+    } else {
+      other = '<div class="yc-other" style="padding-top:0; border-top:none; margin-bottom:6px;"></div>';
+    }
+
+    const pct = n => (n / d.totalDays * 100).toFixed(2) + '%';
+    const strip = `
+      <div class="yc-strip">
+        <div class="yc-seg my" style="width:${pct(d.elapsed.my)}" title="马来西亚 ${d.elapsed.my} 天"></div>
+        <div class="yc-seg sg" style="width:${pct(d.elapsed.sg)}" title="新加坡 ${d.elapsed.sg} 天"></div>
+        <div class="yc-seg other" style="width:${pct(d.elapsed.other)}" title="其他 ${d.elapsed.other} 天"></div>
+        <div class="yc-seg proj" style="width:${pct(d.projectedDays)}" title="尚未发生 ${d.projectedDays} 天"></div>
+      </div>
+      <div class="yc-strip-cap">
+        <span>已发生 ${d.elapsedDays} / ${d.totalDays} 天</span>
+        ${d.projectedDays > 0 ? `<span>斜纹 = 余下 ${d.projectedDays} 天，按已录入的计划和常驻地估算</span>` : ''}
+      </div>`;
+
+    return `<div class="year-card yc"><div class="yc-sub">${sub}</div>${rows}${other}${strip}</div>`;
   }
 
   function renderOverviewYearSelect(data){
@@ -1591,43 +1756,7 @@ import * as pdfjsLib from './lib/pdf.min.mjs';
       return;
     }
     const data = allData.filter(d => d.year === selectedOverviewYear);
-    yearCardsEl.innerHTML = data.map(d=>{
-      const myPct = (d.myDays/d.totalDays*100).toFixed(1);
-      const sgPct = (d.sgDays/d.totalDays*100).toFixed(1);
-      const otherPct = (d.otherDays/d.totalDays*100).toFixed(1);
-
-      const myHit = d.myDays >= 182;
-      const sgHit = d.sgDays >= 183;
-
-      const otherList = Object.entries(d.otherBreakdown)
-        .sort((a,b)=>b[1]-a[1])
-        .map(([name,days])=>`<span class="stamp other">${escapeHtml(name)} <span class="n">${days}</span> 天</span>`)
-        .join('');
-
-      return `
-        <div class="year-card">
-          <div class="year-head">
-            <span class="year-num">${d.year}</span>
-            <span class="year-total">全年 ${d.totalDays} 天</span>
-          </div>
-          <div class="bar">
-            <div class="bar-seg seg-my" style="width:${myPct}%" title="马来西亚 ${d.myDays} 天"></div>
-            <div class="bar-seg seg-sg" style="width:${sgPct}%" title="新加坡 ${d.sgDays} 天"></div>
-            <div class="bar-seg seg-other" style="width:${otherPct}%" title="其他 ${d.otherDays} 天"></div>
-          </div>
-          <div class="stamp-row">
-            <span class="stamp my">马来西亚 <span class="n">${d.myDays}</span> 天</span>
-            <span class="stamp sg">新加坡 <span class="n">${d.sgDays}</span> 天</span>
-            ${d.otherDays>0 ? `<span class="stamp other">其他国家合计 <span class="n">${d.otherDays}</span> 天</span>` : ''}
-            ${otherList}
-          </div>
-          <div class="threshold-note">
-            <span>马来西亚 182 天门槛：<span class="${myHit?'hit':'ok'}">${d.myDays} / 182 ${myHit?'（已达）':''}</span></span>
-            <span>新加坡 183 天门槛：<span class="${sgHit?'hit':'ok'}">${d.sgDays} / 183 ${sgHit?'（已达）':''}</span></span>
-          </div>
-        </div>
-      `;
-    }).join('');
+    yearCardsEl.innerHTML = data.map(ycCardHTML).join('');
   }
 
   function escapeHtml(str){

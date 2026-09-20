@@ -54,6 +54,8 @@
     --checkpoint-soft: #7FA396;
     --gold-line: #C9BFA6;
     --grey-text: #5A5648;
+    --sg-blue: #2F4A78;
+    --sg-blue-soft: #8FA3C4;
     --card-shadow: 0 1px 0 rgba(30,42,68,0.06), 0 8px 24px -12px rgba(30,42,68,0.25);
     --serif: Georgia, 'Iowan Old Style', 'Palatino Linotype', 'Songti SC', 'PingFang SC', serif;
     --mono: 'SF Mono', 'IBM Plex Mono', Consolas, 'Courier New', monospace;
@@ -196,7 +198,7 @@
   }
   .bar-seg{height:100%;}
   .seg-my{background:var(--checkpoint);}
-  .seg-sg{background:var(--stamp);}
+  .seg-sg{background:var(--sg-blue);}
   .seg-other{background:#8B8368;}
   .seg-empty{background:var(--paper-dark);}
 
@@ -218,7 +220,7 @@
   }
   .stamp .n{font-size:15px; font-weight:700;}
   .stamp.my{color:var(--checkpoint); border-color:var(--checkpoint-soft); background:rgba(62,98,89,0.06);}
-  .stamp.sg{color:var(--stamp); border-color:var(--stamp-soft); background:rgba(166,58,46,0.06);}
+  .stamp.sg{color:var(--sg-blue); border-color:var(--sg-blue-soft); background:rgba(47,74,120,0.06);}
   .stamp.other{color:#6B644C; border-color:#C9BFA6; background:rgba(139,131,104,0.08);}
 
   .threshold-note{
@@ -232,6 +234,48 @@
   }
   .threshold-note span.hit{color:var(--stamp); font-weight:700;}
   .threshold-note span.ok{color:var(--checkpoint); font-weight:700;}
+
+
+  /* ================= YEAR CARD v23: threshold progress rows ================= */
+  .yc{padding:16px 18px 14px; font-variant-numeric:tabular-nums;}
+  .yc-sub{font-family:var(--mono); font-size:11.5px; color:var(--grey-text); margin-bottom:14px;}
+  .yc-row{margin-bottom:16px;}
+  .yc-row-head{display:flex; justify-content:space-between; align-items:center; gap:6px 10px; flex-wrap:wrap; margin-bottom:6px;}
+  .yc-name{display:flex; align-items:center; gap:7px; font-weight:700; font-size:14.5px; color:var(--ink);}
+  .yc-dot{width:9px; height:9px; border-radius:50%; display:inline-block; flex-shrink:0;}
+  .yc-dot.my, .yc-fill.my, .yc-seg.my{background:var(--checkpoint);}
+  .yc-dot.sg, .yc-fill.sg, .yc-seg.sg{background:var(--sg-blue);}
+  .yc-basetag{font-family:var(--mono); font-size:10.5px; font-weight:400; color:var(--grey-text);
+    border:1px solid var(--gold-line); border-radius:3px; padding:0 5px;}
+  .yc-badge{font-size:11.5px; padding:3px 10px; border-radius:999px; border:1px solid var(--gold-line);
+    color:var(--ink-soft); white-space:nowrap;}
+  .yc-badge.hit{font-weight:700;}
+  .yc-badge.hit.my{color:var(--checkpoint); border-color:var(--checkpoint-soft); background:rgba(62,98,89,0.09);}
+  .yc-badge.hit.sg{color:var(--sg-blue); border-color:var(--sg-blue-soft); background:rgba(47,74,120,0.08);}
+  .yc-badge.imp{border-style:dashed; color:var(--grey-text);}
+  .yc-track{position:relative; padding:3px 0;}
+  .yc-bar{display:flex; height:10px; border-radius:5px; overflow:hidden; background:var(--paper-dark);}
+  .yc-fill, .yc-proj{height:100%;}
+  .yc-proj.my{background:repeating-linear-gradient(135deg, rgba(62,98,89,0.5) 0 2px, transparent 2px 5px);}
+  .yc-proj.sg{background:repeating-linear-gradient(135deg, rgba(47,74,120,0.5) 0 2px, transparent 2px 5px);}
+  .yc-tick{position:absolute; top:0; bottom:0; width:2px; margin-left:-1px; background:var(--ink); border-radius:1px;}
+  .yc-row-foot{display:flex; justify-content:space-between; gap:4px 10px; flex-wrap:wrap; margin-top:5px;
+    font-family:var(--mono); font-size:12px; color:var(--grey-text);}
+  .yc-n{font-size:17px; color:var(--ink);}
+  .yc-muted{color:#8A836C; font-size:11.5px;}
+  .yc-other{display:flex; flex-wrap:wrap; align-items:center; gap:8px; padding-top:12px; margin-bottom:12px;
+    border-top:1px dashed var(--gold-line);}
+  .yc-other-label{font-family:var(--mono); font-size:12px; color:var(--grey-text);}
+  .yc-other-label b{color:var(--ink);}
+  .yc-chip{display:inline-flex; align-items:center; gap:6px; font-size:12.5px; padding:3px 9px;
+    border:1px solid var(--gold-line); border-radius:6px; background:#fff; color:var(--ink);}
+  .yc-chip i{width:8px; height:8px; border-radius:50%; display:inline-block;}
+  .yc-strip{display:flex; height:6px; border-radius:3px; overflow:hidden; background:var(--paper-dark);}
+  .yc-strip .yc-seg{height:100%;}
+  .yc-strip .yc-seg.other{background:#8B8368;}
+  .yc-strip .yc-seg.proj{background:repeating-linear-gradient(135deg, rgba(90,86,72,0.45) 0 2px, transparent 2px 5px);}
+  .yc-strip-cap{display:flex; justify-content:space-between; gap:4px 10px; flex-wrap:wrap; margin-top:6px;
+    font-family:var(--mono); font-size:11px; color:#8A836C;}
 
   /* trip log table */
   table{width:100%; border-collapse:collapse; font-size:13px;}
@@ -257,7 +301,7 @@
     white-space:nowrap;
   }
   .tag.my{color:var(--checkpoint); border-color:var(--checkpoint-soft);}
-  .tag.sg{color:var(--stamp); border-color:var(--stamp-soft);}
+  .tag.sg{color:var(--sg-blue); border-color:var(--sg-blue-soft);}
   .tag.other{color:#6B644C; border-color:#C9BFA6;}
   .row-actions{display:flex; gap:10px;}
   .row-actions button{
@@ -963,7 +1007,8 @@
           </div>
           <div class="field span-2" id="otherNameField" style="display:none;">
             <label for="otherName">国家名称</label>
-            <input type="text" id="otherName" placeholder="例如：泰国">
+            <input type="text" id="otherName" placeholder="例如：泰国" list="countryList" autocomplete="off">
+            <datalist id="countryList"><option value="越南"><option value="韩国"><option value="中国"><option value="泰国"><option value="日本"><option value="印尼"><option value="菲律宾"><option value="柬埔寨"><option value="老挝"><option value="缅甸"><option value="台湾"><option value="香港"><option value="澳门"><option value="印度"><option value="文莱"><option value="澳洲"><option value="美国"><option value="英国"></datalist>
           </div>
           <div class="field">
             <label for="startDate">出发日期</label>
@@ -1022,7 +1067,7 @@
 <div class="version-badge" id="versionBadge"></div>
 
 <div class="footer-note">
-  说明：天数计算采用「出发日与返回日均计为整天」的简化方式，实际税务规则（例如马来西亚 182 天 / 新加坡 183 天居民门槛）可能有不同的计算细节。以上门槛数字仅供参考，不构成税务意见，具体请以马来西亚内陆税收局（LHDN）、新加坡税务局（IRAS）规定或专业税务顾问意见为准。
+  说明：天数计算采用「出发日与返回日均计为整天」的简化方式，实际税务规则（例如马来西亚 182 天 / 新加坡 183 天居民门槛）可能有不同的计算细节。门槛是否达标只按截至今天已发生的天数判断；年度卡中斜纹部分是尚未发生的日子，仅按已录入的计划和常驻地估算，不计入达标判断；没有记录的日子一律计入常驻地。以上门槛数字仅供参考，不构成税务意见，具体请以马来西亚内陆税收局（LHDN）、新加坡税务局（IRAS）规定或专业税务顾问意见为准。
 </div>
 
 <!--

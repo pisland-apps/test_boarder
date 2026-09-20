@@ -184,7 +184,28 @@ Behaviour worth knowing when touching this code:
 - z-index ladder: FAB 450 < top bar 500 < sidebar 600 < trip modal 900 <
   toast 950 < image viewer 1000 < lock screen 2000 < version badge 3000.
 
+## v23: Year overview card redesigned around elapsed days
+
+`computeYearlyData()` keeps its old full-year fields (`myDays`, `sgDays`,
+`otherDays`, `otherBreakdown` — the print view still reads them) and now also
+returns `elapsedDays`, `projectedDays`, `elapsed{my,sg,other,otherBreakdown}`
+and `projected{...}`. "Elapsed" = Jan 1 through today (local date, inclusive);
+"projected" = the rest of the year (planned trips already entered + everything
+else at the base location). Unrecorded days always go to the base location.
+
+- **Threshold checks (MY 182 / SG 183) use elapsed days only.** States:
+  已达 / 还差 N 天 / 今年已不可能达到 (elapsed + remaining days < threshold) /
+  未达 (past year) / 尚未开始 (future year). Hatched bar segments and
+  "预计全年" are estimates and never affect the badge.
+- Colours: Malaysia green, Singapore blue (`--sg-blue`, also applied to the
+  trip-table tag). Red is no longer used for a country. Badges are neutral.
+- `countryDisplayName()` groups/renders free-text countries under one Chinese
+  name ("VIETNAM"/"Vietnam"/"越南" → 越南) via `COUNTRY_ALIASES`. Display only;
+  stored `otherName` is untouched. The 国家名称 field has a `<datalist>` of
+  common countries so new entries are consistent.
+- Not done (deliberately): click-a-country-chip to filter the trip list.
+
 ## Current versions
 
-- `APP_VERSION`: `v22` (`app.js`)
-- `CACHE_NAME`: `border-day-ledger-cache-v22` (`sw.js`)
+- `APP_VERSION`: `v23` (`app.js`)
+- `CACHE_NAME`: `border-day-ledger-cache-v23` (`sw.js`)

@@ -42,8 +42,8 @@ import * as pdfjsLib from './lib/pdf.min.mjs';
   // (Ctrl/Cmd+Shift+R) or clear the Service Worker/cache in devtools,
   // rather than assuming the deploy didn't work.
   // ---------------------------------------------------------------------
-  const APP_VERSION = 'v21';
-  const APP_VERSION_DATE = '2026-09-05';
+  const APP_VERSION = 'v22';
+  const APP_VERSION_DATE = '2026-09-20';
 
   // Set immediately (not gated behind unlock) so the badge is visible on
   // the lock screen before the password is entered.
@@ -1018,6 +1018,15 @@ import * as pdfjsLib from './lib/pdf.min.mjs';
   // that extra push/pop pair entirely.
   let autoScrolling = false;
 
+  // Add/Edit trip modal history state (see the modal block near the form
+  // code below). Declared here because popstate + syncScrollGuard read them.
+  let tripModalOpen = false;
+  let tripModalHistoryPushed = false;
+  // True for the instant after WE call history.back() to retire our own
+  // dummy entry, so the popstate that produces isn't mistaken for the user
+  // pressing Back (which would also wrongly trip the scroll-to-top guard).
+  let tripModalSelfPop = false;
+
   function scrollToTopGuarded(){
     autoScrolling = true;
     let settled = false;
@@ -1043,6 +1052,7 @@ import * as pdfjsLib from './lib/pdf.min.mjs';
     if(imgModalOverlay.classList.contains('open')) return;
     if(lockOverlayEl && lockOverlayEl.classList.contains('open')) return;
     if(autoScrolling) return;
+    if(tripModalOpen) return;
 
     if(window.scrollY > SCROLL_GUARD_PX && !scrollGuardPushed){
       history.pushState({ scrollGuard: true }, '');
@@ -1057,6 +1067,8 @@ import * as pdfjsLib from './lib/pdf.min.mjs';
 
   window.addEventListener('popstate', ()=>{
     if(imgModalOverlay.classList.contains('open')){ closeImageModal(true); return; }
+    if(tripModalSelfPop){ tripModalSelfPop = false; return; }
+    if(tripModalOpen){ requestCloseTripModal(true); return; }
     if(ignoreNextPopstateForScrollGuard){ ignoreNextPopstateForScrollGuard = false; return; }
     if(scrollGuardPushed){
       scrollGuardPushed = false;
@@ -1224,8 +1236,23 @@ import * as pdfjsLib from './lib/pdf.min.mjs';
 
   let editingId = null;
 
+  // Guards against a double-tap on 添加记录 creating two identical trips
+  // while image storage is still writing (the button is disabled too).
+  let tripSaving = false;
+  const submitBtnEl = document.getElementById('submitBtn');
   tripForm.addEventListener('submit', async (e)=>{
     e.preventDefault();
+    if(tripSaving) return;
+    tripSaving = true;
+    submitBtnEl.disabled = true;
+    try{ await saveTripFromForm(); }
+    finally{ tripSaving = false; submitBtnEl.disabled = false; }
+  });
+
+  async function saveTripFromForm(){
+    // Captured up front: closing the modal resets editingId to null, and the
+    // awaits below would otherwise read the wrong value.
+    const editId = editingId;
     const dest = destSelect.value;
     const otherName = otherNameInput.value.trim();
     const start = document.getElementById('startDate').value;
@@ -1238,8 +1265,8 @@ import * as pdfjsLib from './lib/pdf.min.mjs';
     if(new Date(end) < new Date(start)){ alert('返回日期不能早于出发日期'); return; }
     if(dest === 'OTHER' && !otherName){ alert('请填写国家名称'); return; }
 
-    if(editingId){
-      const idx = trips.findIndex(t => t.id === editingId);
+    if(editId){
+      const idx = trips.findIndex(t => t.id === editId);
       if(idx !== -1){
         // start from existing images minus any the user removed
         let imageIds = (trips[idx].imageIds || []).filter(id2 => !removedExistingImageIds.has(id2));
@@ -1247,20 +1274,23 @@ import * as pdfjsLib from './lib/pdf.min.mjs';
         let failedCount = 0;
         for(const dataURL of pendingNewImages){
           const imgId = newImageId();
-          const ok = await setTripImage(editingId, imgId, dataURL);
+          const ok = await setTripImage(editId, imgId, dataURL);
           if(ok) imageIds.push(imgId); else failedCount++;
         }
-        trips[idx] = { id: editingId, dest, otherName: dest==='OTHER' ? otherName : '', start, end, note, transportMode, route, imageIds };
+        trips[idx] = { id: editId, dest, otherName: dest==='OTHER' ? otherName : '', start, end, note, transportMode, route, imageIds };
         saveTrips();
-        cancelEdit();
+        closeTripModal();
         render();
         // clean up storage for images the user actually removed, now that save succeeded
-        for(const imgId of removedIds) await deleteTripImage(editingId, imgId);
-        if(failedCount > 0) flashRetryableError(
-          `记录已更新，但 ${failedCount} 张图片未能保存` + (HAS_CLAUDE_STORAGE ? '' : '（本地浏览器存储空间可能已用满，试试删掉几张旧图片再传）'),
-          ()=>startEdit(editingId)
-        );
-        else flashStatus('已更新记录');
+        for(const imgId of removedIds) await deleteTripImage(editId, imgId);
+        if(failedCount > 0){
+          const msg = `记录已更新，但 ${failedCount} 张图片未能保存` + (HAS_CLAUDE_STORAGE ? '' : '（本地浏览器存储空间可能已用满，试试删掉几张旧图片再传）');
+          flashRetryableError(msg, ()=>startEdit(editId));
+          showToast('⚠️ ' + msg, { duration:7000, actionLabel:'重新编辑', action:()=>startEdit(editId) });
+        }else{
+          flashStatus('已更新记录');
+          showToast('已更新记录');
+        }
       }
     } else {
       const newId = 't' + Date.now() + Math.floor(Math.random()*1000);
@@ -1277,17 +1307,17 @@ import * as pdfjsLib from './lib/pdf.min.mjs';
         start, end, note, transportMode, route, imageIds
       });
       saveTrips();
-      tripForm.reset();
-      otherNameField.style.display = 'none';
-      transportModeEl.value = 'AIR';
-      resetImageFormState();
+      closeTripModal();
       render();
-      if(failedCount > 0) flashRetryableError(
-        `行程已保存，但 ${failedCount} 张图片未能保存` + (HAS_CLAUDE_STORAGE ? '' : '（本地浏览器存储空间可能已用满，试试删掉几张旧图片再传）'),
-        ()=>startEdit(newId)
-      );
+      if(failedCount > 0){
+        const msg = `行程已保存，但 ${failedCount} 张图片未能保存` + (HAS_CLAUDE_STORAGE ? '' : '（本地浏览器存储空间可能已用满，试试删掉几张旧图片再传）');
+        flashRetryableError(msg, ()=>startEdit(newId));
+        showToast('⚠️ ' + msg, { duration:7000, actionLabel:'重新编辑', action:()=>startEdit(newId) });
+      }else{
+        showToast('已添加行程');
+      }
     }
-  });
+  }
 
   async function startEdit(id){
     const t = trips.find(x => x.id === id);
@@ -1303,18 +1333,22 @@ import * as pdfjsLib from './lib/pdf.min.mjs';
     routeDetailEl.value = t.route || '';
 
     resetImageFormState();
+    document.getElementById('formTitle').textContent = '编辑行程';
+    submitBtnEl.textContent = '保存修改';
+    // Open first, then load thumbnails: the modal appears instantly and the
+    // attachments fill in a moment later.
+    openTripModal();
     if(t.imageIds && t.imageIds.length > 0){
-      existingImagesForEdit = await getTripImages(t);
+      const imgs = await getTripImages(t);
+      // user may have closed the modal / switched trips while we were loading
+      if(editingId !== id) return;
+      existingImagesForEdit = imgs;
       renderImageThumbList();
     }
-
-    document.getElementById('formTitle').textContent = '编辑行程';
-    document.getElementById('submitBtn').textContent = '保存修改';
-    document.getElementById('cancelEditField').style.display = 'flex';
-    document.getElementById('tripForm').scrollIntoView({ behavior:'smooth', block:'center' });
   }
 
-  function cancelEdit(){
+  // Puts the form back to a blank "新增行程" state.
+  function resetTripForm(){
     editingId = null;
     tripForm.reset();
     otherNameField.style.display = 'none';
@@ -1322,14 +1356,135 @@ import * as pdfjsLib from './lib/pdf.min.mjs';
     routeDetailEl.value = '';
     resetImageFormState();
     document.getElementById('formTitle').textContent = '新增行程';
-    document.getElementById('submitBtn').textContent = '添加记录';
-    document.getElementById('cancelEditField').style.display = 'none';
+    submitBtnEl.textContent = '添加记录';
   }
 
-  document.getElementById('cancelEditBtn').addEventListener('click', cancelEdit);
+  // ---------------------------------------------------------------------
+  // Add / Edit trip MODAL (v22). The form used to be an inline card at the
+  // top of the page; it now lives in #tripModalOverlay and is opened by the
+  // floating ＋ button, the ＋ 新增行程 button in the trip list header, or
+  // the ✏️ button on a row (startEdit).
+  //
+  // Back-button handling follows the same dummy-history-entry pattern as the
+  // image viewer: opening pushes one entry so hardware/gesture Back closes
+  // the modal instead of leaving the PWA. Closing by any other route (X,
+  // 取消, save, Esc) retires that entry itself via history.back(), and
+  // tripModalSelfPop makes popstate ignore the pop that causes.
+  //
+  // Data-loss guards: a half-filled form is never thrown away silently —
+  // tapping the dark backdrop does nothing once anything has been typed,
+  // and X / 取消 / Esc / Back ask first.
+  // ---------------------------------------------------------------------
+  const tripModalOverlay = document.getElementById('tripModalOverlay');
+  const tripModalEl = document.getElementById('tripModal');
+  const tripModalBodyEl = document.getElementById('tripModalBody');
+  let tripFormDirty = false;
+  let tripModalReturnFocusEl = null;
+
+  function openTripModal(){
+    if(tripModalOpen) return;
+    tripModalReturnFocusEl = document.activeElement;
+    tripFormDirty = false;
+    tripModalOverlay.classList.add('open');
+    document.documentElement.classList.add('modal-open');
+    tripModalOpen = true;
+    history.pushState({ tripModal:true }, '');
+    tripModalHistoryPushed = true;
+    tripModalBodyEl.scrollTop = 0;
+    tripModalEl.focus({ preventScroll:true });
+  }
+
+  function openNewTripModal(){
+    if(tripModalOpen) return;
+    resetTripForm();
+    openTripModal();
+  }
+
+  // fromPopstate: true when Back already popped our history entry (so we
+  // must not call history.back() again).
+  function closeTripModal(fromPopstate){
+    if(!tripModalOpen) return;
+    tripModalOpen = false;
+    tripModalOverlay.classList.remove('open');
+    document.documentElement.classList.remove('modal-open');
+    resetTripForm();
+    tripFormDirty = false;
+    if(tripModalHistoryPushed){
+      tripModalHistoryPushed = false;
+      if(!fromPopstate){
+        tripModalSelfPop = true;
+        setTimeout(()=>{ tripModalSelfPop = false; }, 800); // safety net if popstate never fires
+        history.back();
+      }
+    }
+    const el = tripModalReturnFocusEl;
+    tripModalReturnFocusEl = null;
+    if(el && typeof el.focus === 'function' && document.contains(el)) el.focus({ preventScroll:true });
+  }
+
+  // Asks before discarding typed-in data; refuses to close mid-save.
+  function requestCloseTripModal(fromPopstate){
+    if(!tripModalOpen) return;
+    if(tripSaving || (tripFormDirty && !confirm('放弃未保存的内容？'))){
+      // Back already removed our entry — put it back so the next Back works.
+      if(fromPopstate) history.pushState({ tripModal:true }, '');
+      return;
+    }
+    closeTripModal(fromPopstate);
+  }
+
+  tripForm.addEventListener('input', ()=>{ tripFormDirty = true; });
+  tripForm.addEventListener('change', ()=>{ tripFormDirty = true; });
+  imageThumbList.addEventListener('click', ()=>{ tripFormDirty = true; });
+
+  document.getElementById('addTripFab').addEventListener('click', openNewTripModal);
+  document.getElementById('addTripBtn').addEventListener('click', openNewTripModal);
+  document.getElementById('tripModalCloseBtn').addEventListener('click', ()=>requestCloseTripModal(false));
+  document.getElementById('cancelEditBtn').addEventListener('click', ()=>requestCloseTripModal(false));
+  tripModalOverlay.addEventListener('click', (e)=>{
+    if(e.target === tripModalOverlay && !tripFormDirty) requestCloseTripModal(false);
+  });
+  document.addEventListener('keydown', (e)=>{
+    if(!tripModalOpen) return;
+    if(imgModalOverlay.classList.contains('open') || lockOverlayEl.classList.contains('open')) return;
+    if(e.key === 'Escape'){ e.preventDefault(); requestCloseTripModal(false); return; }
+    if(e.key === 'Tab'){
+      // keep keyboard focus inside the dialog
+      const f = Array.from(tripModalEl.querySelectorAll('button, input, select'))
+        .filter(x => !x.disabled && x.offsetParent !== null);
+      if(f.length === 0) return;
+      const first = f[0], last = f[f.length - 1];
+      if(e.shiftKey && (document.activeElement === first || document.activeElement === tripModalEl)){ e.preventDefault(); last.focus(); }
+      else if(!e.shiftKey && document.activeElement === last){ e.preventDefault(); first.focus(); }
+    }
+  });
+
+  // Small bottom toast. The old flashStatus() text lives inside the settings
+  // drawer, which is hidden on phones — so saves gave no visible feedback
+  // there. Now that the form closes on save, that feedback matters.
+  const toastEl = document.getElementById('toast');
+  let toastTimer = null;
+  function hideToast(){ toastEl.classList.remove('show'); }
+  function showToast(msg, opts){
+    opts = opts || {};
+    toastEl.textContent = '';
+    const span = document.createElement('span');
+    span.textContent = msg;
+    toastEl.appendChild(span);
+    if(opts.action){
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = opts.actionLabel || '重试';
+      b.addEventListener('click', ()=>{ hideToast(); opts.action(); });
+      toastEl.appendChild(b);
+    }
+    toastEl.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(hideToast, opts.duration || 2200);
+  }
 
   async function deleteTrip(id){
-    if(editingId === id) cancelEdit();
+    if(editingId === id) closeTripModal();
     const t = trips.find(x => x.id === id);
     trips = trips.filter(x => x.id !== id);
     saveTrips();
@@ -1432,7 +1587,7 @@ import * as pdfjsLib from './lib/pdf.min.mjs';
     const allData = computeYearlyData();
     renderOverviewYearSelect(allData);
     if(trips.length===0){
-      yearCardsEl.innerHTML = '<div class="empty-state">还没有任何行程记录 —— 添加第一条行程，年度统计会自动出现在这里。</div>';
+      yearCardsEl.innerHTML = '<div class="empty-state">还没有任何行程记录 —— 点右下角「＋」添加第一条行程，年度统计会自动出现在这里。</div>';
       return;
     }
     const data = allData.filter(d => d.year === selectedOverviewYear);
@@ -2513,6 +2668,8 @@ import * as pdfjsLib from './lib/pdf.min.mjs';
   // inline listener — so both the top-bar lock button and any other future
   // entry point can trigger the exact same behavior.
   async function lockAppNow(){
+    closeTripModal(false); // discard any half-filled trip form
+    hideToast();
     sessionKey = null;
     closeSidebar();
     lockOverlayEl.classList.add('open');

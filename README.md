@@ -154,7 +154,37 @@ before they're ever stored. `attachmentThumbMarkup()` also now runs `dataURL`
 through `escapeHtml()` as defense-in-depth — a no-op for real attachments,
 since legitimate base64 data URLs never contain the characters it escapes.
 
+## v22: Add / Edit trip form moved into a modal
+
+The inline 新增行程 card used to sit above the year overview and pushed
+everything down. It is now a modal (`#tripModalOverlay`), opened by:
+
+- the floating ＋ button (`#addTripFab`, bottom-right, always reachable),
+- the ＋ 新增行程 button in the 行程记录 header (`#addTripBtn`, hidden on
+  phones where it would collide with the floating button),
+- the ✏️ button on a trip row (edit mode: same modal, title 编辑行程).
+
+Behaviour worth knowing when touching this code:
+
+- **History / Back**: opening pushes one dummy history entry (same pattern as
+  the image viewer). Back closes the modal. Closing any other way (×, 取消,
+  Esc, save) retires that entry with `history.back()`, and `tripModalSelfPop`
+  makes the resulting `popstate` a no-op — without it the scroll-to-top guard
+  would misread it as a Back press and jump the page.
+- **No silent data loss**: once anything is typed/attached, tapping the dark
+  backdrop does nothing, and ×/取消/Esc/Back ask "放弃未保存的内容？" first.
+  Closing is refused while a save is in flight; the submit button is disabled
+  during save so a double-tap can't create a duplicate trip.
+- **Lock**: `lockAppNow()` discards a half-filled form before showing the lock
+  screen.
+- **Feedback**: `showToast()` (bottom toast) confirms add/update, since the
+  old `#saveStatus` text lives inside the settings drawer (hidden on phones).
+- Also fixed on the way: the retry action after a partial image-save failure
+  on *edit* used `editingId` after it had been reset to null, so it did nothing.
+- z-index ladder: FAB 450 < top bar 500 < sidebar 600 < trip modal 900 <
+  toast 950 < image viewer 1000 < lock screen 2000 < version badge 3000.
+
 ## Current versions
 
-- `APP_VERSION`: `v20` (`app.js`)
-- `CACHE_NAME`: `border-day-ledger-cache-v20` (`sw.js`)
+- `APP_VERSION`: `v22` (`app.js`)
+- `CACHE_NAME`: `border-day-ledger-cache-v22` (`sw.js`)

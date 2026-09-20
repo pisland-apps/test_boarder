@@ -143,7 +143,7 @@
   }
   select:focus, input:focus{outline:2px solid var(--checkpoint-soft); outline-offset:1px;}
 
-  form.trip-form{display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end;}
+  form.trip-form{display:flex;flex-direction:column;flex:1 1 auto;min-height:0;margin:0;}
   .btn{
     font-family:var(--sans);
     font-size:13.5px;
@@ -583,6 +583,104 @@
     }
     .app-main-col{flex:1; min-width:0;}
   }
+
+  /* ================= ADD / EDIT TRIP: FAB + MODAL (v22) =================
+     The inline "新增行程" card was moved into a modal so it no longer takes
+     up space above the year overview. z-index ladder:
+       FAB 450 < top bar 500 < sidebar 600/601 < trip modal 900 < toast 950
+       < image viewer 1000 < lock screen 2000 < version badge 3000        */
+  .fab{
+    position:fixed; right:18px; bottom:calc(34px + env(safe-area-inset-bottom, 0px));
+    width:54px; height:54px; padding:0; border:none; border-radius:50%;
+    background:var(--ink); color:var(--paper); cursor:pointer; z-index:450;
+    display:flex; align-items:center; justify-content:center;
+    box-shadow:0 10px 22px -8px rgba(30,42,68,0.55);
+    -webkit-tap-highlight-color:transparent;
+    transition:transform .12s ease, background .12s ease;
+  }
+  .fab:hover{background:#16213a;}
+  .fab:active{transform:scale(0.94);}
+  .fab svg{width:26px; height:26px;}
+
+  .trip-modal-overlay{
+    display:none; position:fixed; inset:0; z-index:900;
+    background:rgba(30,42,68,0.55);
+    align-items:flex-end; justify-content:center;
+  }
+  .trip-modal-overlay.open{display:flex; animation:tripFade .18s ease-out;}
+  .trip-modal{
+    display:flex; flex-direction:column;
+    width:100%; max-width:560px; max-height:92vh; max-height:92dvh;
+    background:#fff; border:1px solid var(--gold-line); border-bottom:none;
+    border-radius:12px 12px 0 0; box-shadow:var(--card-shadow); outline:none;
+    animation:tripSheetUp .24s cubic-bezier(.2,.8,.2,1);
+  }
+  .trip-modal-head{
+    display:flex; align-items:center; justify-content:space-between; gap:12px;
+    padding:14px 18px 12px; border-bottom:1px dashed var(--gold-line); flex-shrink:0;
+  }
+  .trip-modal-head .panel-title{margin:0;}
+  .trip-modal-close{
+    width:34px; height:34px; padding:0; flex-shrink:0;
+    background:transparent; border:1px solid var(--gold-line); border-radius:8px;
+    font-size:20px; line-height:1; color:var(--ink-soft); cursor:pointer;
+  }
+  .trip-modal-close:hover{border-color:var(--stamp); color:var(--stamp);}
+  .trip-modal-body{
+    flex:1 1 auto; min-height:0; overflow-y:auto; overscroll-behavior:contain;
+    -webkit-overflow-scrolling:touch; padding:16px 18px;
+  }
+  .trip-grid{display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:14px;}
+  .trip-grid .span-2{grid-column:1 / -1;}
+  .trip-grid select, .trip-grid input[type=date], .trip-grid input[type=text]{
+    min-width:0; width:100%;
+  }
+  .trip-modal-foot{
+    display:flex; gap:10px; justify-content:flex-end; flex-shrink:0;
+    padding:12px 18px calc(12px + env(safe-area-inset-bottom, 0px));
+    border-top:1px dashed var(--gold-line); background:#fff;
+  }
+  .trip-modal-foot .btn{padding:10px 18px;}
+  .trip-modal-foot #submitBtn{flex:1 1 auto;}
+  .trip-modal-foot #submitBtn:disabled{opacity:0.6; cursor:default;}
+  html.modal-open, html.modal-open body{overflow:hidden;}
+
+  @media (min-width:640px){
+    .trip-modal-overlay{align-items:center; padding:24px;}
+    .trip-modal{border-bottom:1px solid var(--gold-line); border-radius:6px; max-height:88vh; max-height:88dvh; animation-name:tripPop;}
+    .trip-modal-foot #submitBtn{flex:0 0 auto; min-width:130px;}
+  }
+  @media (max-width:639px){
+    /* 16px stops iOS Safari zooming the page when a field is focused */
+    .trip-grid select, .trip-grid input[type=date], .trip-grid input[type=text]{font-size:16px; padding:10px 8px;}
+  }
+  @media (max-width:359px){ .trip-grid{grid-template-columns:minmax(0,1fr);} }
+  @keyframes tripFade{from{opacity:0}to{opacity:1}}
+  @keyframes tripSheetUp{from{transform:translateY(40px); opacity:0}to{transform:none; opacity:1}}
+  @keyframes tripPop{from{transform:translateY(10px) scale(.98); opacity:0}to{transform:none; opacity:1}}
+  @media (prefers-reduced-motion:reduce){
+    .trip-modal-overlay.open, .trip-modal, .toast.show{animation:none;}
+  }
+
+  .add-trip-btn{padding:7px 14px; font-size:13px; white-space:nowrap;}
+  /* on phones the floating ＋ is the single entry point (the two would collide) */
+  @media (max-width:639px){ .add-trip-btn{display:none;} }
+  /* the build badge would sit on top of the modal's action buttons */
+  html.modal-open .version-badge{display:none;}
+
+  .toast{
+    position:fixed; left:50%; transform:translateX(-50%); z-index:950;
+    bottom:calc(100px + env(safe-area-inset-bottom, 0px));
+    display:none; align-items:center; gap:14px; max-width:min(92vw, 440px);
+    background:var(--ink); color:var(--paper); font-family:var(--sans); font-size:13px;
+    line-height:1.5; padding:10px 14px; border-radius:6px; box-shadow:var(--card-shadow);
+  }
+  .toast.show{display:flex; animation:tripFade .18s ease-out;}
+  .toast button{
+    background:none; border:none; padding:0; cursor:pointer; flex-shrink:0;
+    font:inherit; color:#F0C9C2; text-decoration:underline;
+  }
+  @media print{ .fab, .toast, .trip-modal-overlay{display:none !important;} }
 </style>
 </head>
 <body>
@@ -810,66 +908,6 @@
 <main>
 
   <section class="panel">
-    <div class="panel-title"><span class="tick"></span><span id="formTitle">新增行程</span></div>
-    <form class="trip-form" id="tripForm">
-      <div class="field">
-        <label for="destSelect">目的地</label>
-        <select id="destSelect">
-          <option value="MY">马来西亚</option>
-          <option value="SG">新加坡</option>
-          <option value="OTHER">其他国家</option>
-        </select>
-      </div>
-      <div class="field" id="otherNameField" style="display:none;">
-        <label for="otherName">国家名称</label>
-        <input type="text" id="otherName" placeholder="例如：泰国">
-      </div>
-      <div class="field">
-        <label for="startDate">出发日期</label>
-        <input type="date" id="startDate" required>
-      </div>
-      <div class="field">
-        <label for="endDate">返回日期</label>
-        <input type="date" id="endDate" required>
-      </div>
-      <div class="field">
-        <label for="transportMode">交通方式</label>
-        <select id="transportMode">
-          <option value="AIR">✈️ 飞机</option>
-          <option value="LAND">🚗 陆路</option>
-          <option value="SEA">🚢 海路</option>
-          <option value="OTHER">其他</option>
-        </select>
-      </div>
-      <div class="field" style="min-width:200px;">
-        <label for="routeDetail">路线（可选）</label>
-        <input type="text" id="routeDetail" placeholder="例如：SG-JB-BKI-JB-SG">
-      </div>
-      <div class="field" style="flex:1; min-width:160px;">
-        <label for="tripNote">备注（可选）</label>
-        <input type="text" id="tripNote" placeholder="例如：出差 / 探亲">
-      </div>
-      <div class="field image-field" style="flex:1; min-width:220px;">
-        <label for="tripImage">参考图片 / PDF（可选，可多张）</label>
-        <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
-          <input type="file" id="tripImage" accept="image/*,application/pdf" multiple style="flex:1 1 140px; min-width:0; max-width:100%;">
-          <button type="button" class="btn ghost" id="cameraBtn" title="拍照" style="white-space:nowrap; padding:8px 12px; flex-shrink:0;">📷 拍照</button>
-          <input type="file" id="cameraInput" accept="image/*" capture="environment" style="display:none;">
-        </div>
-        <div class="image-thumb-list" id="imageThumbList"></div>
-      </div>
-      <div class="field">
-        <label>&nbsp;</label>
-        <button type="submit" class="btn" id="submitBtn">添加记录</button>
-      </div>
-      <div class="field" id="cancelEditField" style="display:none;">
-        <label>&nbsp;</label>
-        <button type="button" class="btn ghost" id="cancelEditBtn">取消编辑</button>
-      </div>
-    </form>
-  </section>
-
-  <section class="panel">
     <div class="panel-title" style="justify-content:space-between; flex-wrap:wrap; gap:10px;">
       <span style="display:flex; align-items:center; gap:8px;"><span class="tick"></span>年度天数总览</span>
       <select id="overviewYearSelect" style="min-width:100px;"></select>
@@ -878,7 +916,10 @@
   </section>
 
   <section class="panel">
-    <div class="panel-title"><span class="tick"></span>行程记录</div>
+    <div class="panel-title" style="justify-content:space-between; gap:10px;">
+      <span style="display:flex; align-items:center; gap:8px;"><span class="tick"></span>行程记录</span>
+      <button type="button" class="btn add-trip-btn" id="addTripBtn">＋ 新增行程</button>
+    </div>
     <div id="tripTableWrap"></div>
   </section>
 
@@ -887,6 +928,77 @@
 </div><!-- /.app-body-layout -->
 
 <div id="printArea"></div>
+
+<button type="button" class="fab" id="addTripFab" aria-label="新增行程" title="新增行程">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+</button>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<div class="trip-modal-overlay" id="tripModalOverlay">
+  <div class="trip-modal" id="tripModal" role="dialog" aria-modal="true" aria-labelledby="formTitle" tabindex="-1">
+    <div class="trip-modal-head">
+      <div class="panel-title"><span class="tick"></span><span id="formTitle">新增行程</span></div>
+      <button type="button" class="trip-modal-close" id="tripModalCloseBtn" aria-label="关闭">×</button>
+    </div>
+    <form class="trip-form" id="tripForm">
+      <div class="trip-modal-body" id="tripModalBody">
+        <div class="trip-grid">
+          <div class="field">
+            <label for="destSelect">目的地</label>
+            <select id="destSelect">
+              <option value="MY">马来西亚</option>
+              <option value="SG">新加坡</option>
+              <option value="OTHER">其他国家</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="transportMode">交通方式</label>
+            <select id="transportMode">
+              <option value="AIR">✈️ 飞机</option>
+              <option value="LAND">🚗 陆路</option>
+              <option value="SEA">🚢 海路</option>
+              <option value="OTHER">其他</option>
+            </select>
+          </div>
+          <div class="field span-2" id="otherNameField" style="display:none;">
+            <label for="otherName">国家名称</label>
+            <input type="text" id="otherName" placeholder="例如：泰国">
+          </div>
+          <div class="field">
+            <label for="startDate">出发日期</label>
+            <input type="date" id="startDate" required>
+          </div>
+          <div class="field">
+            <label for="endDate">返回日期</label>
+            <input type="date" id="endDate" required>
+          </div>
+          <div class="field span-2">
+            <label for="routeDetail">路线（可选）</label>
+            <input type="text" id="routeDetail" placeholder="例如：SG-JB-BKI-JB-SG">
+          </div>
+          <div class="field span-2">
+            <label for="tripNote">备注（可选）</label>
+            <input type="text" id="tripNote" placeholder="例如：出差 / 探亲">
+          </div>
+          <div class="field image-field span-2">
+            <label for="tripImage">参考图片 / PDF（可选，可多张）</label>
+            <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
+              <input type="file" id="tripImage" accept="image/*,application/pdf" multiple style="flex:1 1 140px; min-width:0; max-width:100%;">
+              <button type="button" class="btn ghost" id="cameraBtn" title="拍照" style="white-space:nowrap; padding:8px 12px; flex-shrink:0;">📷 拍照</button>
+              <input type="file" id="cameraInput" accept="image/*" capture="environment" style="display:none;">
+            </div>
+            <div class="image-thumb-list" id="imageThumbList"></div>
+          </div>
+        </div>
+      </div>
+      <div class="trip-modal-foot">
+        <button type="button" class="btn ghost" id="cancelEditBtn">取消</button>
+        <button type="submit" class="btn" id="submitBtn">添加记录</button>
+      </div>
+    </form>
+  </div>
+</div>
 
 <div class="img-modal-overlay" id="imgModalOverlay">
   <div class="img-modal-box">

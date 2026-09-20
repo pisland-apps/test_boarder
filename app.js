@@ -42,7 +42,7 @@ import * as pdfjsLib from './lib/pdf.min.mjs';
   // (Ctrl/Cmd+Shift+R) or clear the Service Worker/cache in devtools,
   // rather than assuming the deploy didn't work.
   // ---------------------------------------------------------------------
-  const APP_VERSION = 'v23';
+  const APP_VERSION = 'v24';
   const APP_VERSION_DATE = '2026-09-20';
 
   // Set immediately (not gated behind unlock) so the badge is visible on
@@ -1668,22 +1668,25 @@ import * as pdfjsLib from './lib/pdf.min.mjs';
     let badge;
     if(st.kind === 'hit') badge = `<span class="yc-badge hit ${cls}">✓ 已达 ${thr} 天门槛</span>`;
     else if(st.kind === 'open') badge = `<span class="yc-badge">还差 ${st.need} 天到 ${thr} 门槛</span>`;
-    else if(st.kind === 'impossible') badge = `<span class="yc-badge imp">今年已不可能达到 ${thr} 天门槛</span>`;
+    else if(st.kind === 'impossible') badge = '';   // deliberately shows nothing
     else if(st.kind === 'missed') badge = `<span class="yc-badge">未达 ${thr} 天门槛</span>`;
     else badge = `<span class="yc-badge">尚未开始</span>`;
 
     const ePct = Math.min(100, e / d.totalDays * 100);
     const pPct = Math.max(0, Math.min(100 - ePct, p / d.totalDays * 100));
     const tPct = thr / d.totalDays * 100;
-    const over = st.kind === 'hit' ? ` <span class="yc-muted">· 已超过门槛 ${st.over} 天</span>` : '';
-    const projNote = (d.projectedDays > 0 && e + p > 0) ? `<span class="yc-muted">预计全年 ${e + p} 天</span>` : '<span></span>';
+    const over = st.kind === 'hit' ? `<span class="yc-over">已超过门槛 ${st.over} 天</span>` : '';
     const isBase = settings.base === key;
+    // over-text + badge live in .yc-state: one line under the name on phones,
+    // flattened into the header line on wide cards (see the @container rule).
+    const state = (over || badge) ? `<div class="yc-state">${over}${badge}</div>` : '';
 
     return `
       <div class="yc-row">
         <div class="yc-row-head">
           <span class="yc-name"><i class="yc-dot ${cls}"></i>${name}${isBase ? '<span class="yc-basetag">常驻地</span>' : ''}</span>
-          ${badge}
+          <span class="yc-count"><b class="yc-n">${e}</b> / ${thr} 天</span>
+          ${state}
         </div>
         <div class="yc-track" role="img" aria-label="${name} 已发生 ${e} 天，门槛 ${thr} 天">
           <div class="yc-bar">
@@ -1692,7 +1695,6 @@ import * as pdfjsLib from './lib/pdf.min.mjs';
           </div>
           <span class="yc-tick" style="left:${tPct.toFixed(2)}%" title="门槛 ${thr} 天"></span>
         </div>
-        <div class="yc-row-foot"><span><b class="yc-n">${e}</b> / ${thr} 天${over}</span>${projNote}</div>
       </div>`;
   }
 
@@ -1713,24 +1715,9 @@ import * as pdfjsLib from './lib/pdf.min.mjs';
         .map(([name, days]) => `<span class="yc-chip"><i style="background:${ycChipColor(name)}"></i>${escapeHtml(name)} <b>${days}</b></span>`)
         .join('');
       other = `<div class="yc-other"><span class="yc-other-label">其他国家 · 已发生合计 <b>${oe}</b> 天</span>${chips}${op > 0 ? `<span class="yc-muted">另有计划中 ${op} 天</span>` : ''}</div>`;
-    } else {
-      other = '<div class="yc-other" style="padding-top:0; border-top:none; margin-bottom:6px;"></div>';
     }
 
-    const pct = n => (n / d.totalDays * 100).toFixed(2) + '%';
-    const strip = `
-      <div class="yc-strip">
-        <div class="yc-seg my" style="width:${pct(d.elapsed.my)}" title="马来西亚 ${d.elapsed.my} 天"></div>
-        <div class="yc-seg sg" style="width:${pct(d.elapsed.sg)}" title="新加坡 ${d.elapsed.sg} 天"></div>
-        <div class="yc-seg other" style="width:${pct(d.elapsed.other)}" title="其他 ${d.elapsed.other} 天"></div>
-        <div class="yc-seg proj" style="width:${pct(d.projectedDays)}" title="尚未发生 ${d.projectedDays} 天"></div>
-      </div>
-      <div class="yc-strip-cap">
-        <span>已发生 ${d.elapsedDays} / ${d.totalDays} 天</span>
-        ${d.projectedDays > 0 ? `<span>斜纹 = 余下 ${d.projectedDays} 天，按已录入的计划和常驻地估算</span>` : ''}
-      </div>`;
-
-    return `<div class="year-card yc"><div class="yc-sub">${sub}</div>${rows}${other}${strip}</div>`;
+    return `<div class="year-card yc"><div class="yc-sub">${sub}</div>${rows}${other}</div>`;
   }
 
   function renderOverviewYearSelect(data){

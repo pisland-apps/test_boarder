@@ -205,7 +205,19 @@ else at the base location). Unrecorded days always go to the base location.
   common countries so new entries are consistent.
 - Not done (deliberately): click-a-country-chip to filter the trip list.
 
+## v24: year card trimmed for phones
+
+Removed from the card: the "预计全年 N 天" captions, the bottom stacked strip
+(+ its caption) and the "今年已不可能达到" badge (`ycThresholdState` still
+returns `impossible`, it just renders no badge). The elapsed count now sits
+beside the country name. Layout is phone-first: line 1 = name + count, line 2
+(only if present) = "已超过门槛 N 天" + status badge; when the card is
+≥500px wide (`@container yc`) it collapses into one line. On ≤600px the
+inner card frame is flattened (`.panel-year`) to win back width. The hatched
+part of each bar (not-yet-elapsed days) stays, with no legend besides the
+footer note.
+
 ## Current versions
 
-- `APP_VERSION`: `v23` (`app.js`)
-- `CACHE_NAME`: `border-day-ledger-cache-v23` (`sw.js`)
+- `APP_VERSION`: `v24` (`app.js`)
+- `CACHE_NAME`: `border-day-ledger-cache-v24` (`sw.js`)

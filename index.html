@@ -237,10 +237,24 @@
 
 
   /* ================= YEAR CARD v23: threshold progress rows ================= */
-  .yc{padding:16px 18px 14px; font-variant-numeric:tabular-nums;}
+  .yc{padding:16px 18px 14px; font-variant-numeric:tabular-nums; container:yc / inline-size;}
   .yc-sub{font-family:var(--mono); font-size:11.5px; color:var(--grey-text); margin-bottom:14px;}
-  .yc-row{margin-bottom:16px;}
-  .yc-row-head{display:flex; justify-content:space-between; align-items:center; gap:6px 10px; flex-wrap:wrap; margin-bottom:6px;}
+  .yc-row{margin-bottom:14px;}
+  .yc-row:last-child{margin-bottom:0;}
+  /* Phone-first: line 1 = name + count; line 2 (only if there is anything to
+     say) = over-text on the left, status badge on the right. */
+  .yc-row-head{display:flex; flex-wrap:wrap; align-items:baseline; gap:4px 12px; margin-bottom:6px;}
+  .yc-count{font-family:var(--mono); font-size:12px; color:var(--grey-text); white-space:nowrap;}
+  .yc-state{flex:1 1 100%; display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:4px 10px;}
+  .yc-over{font-family:var(--mono); font-size:11.5px; color:#8A836C;}
+  .yc-state .yc-badge{margin-left:auto;}
+  /* Wide card: everything on one line, badge pushed to the right. */
+  @container yc (min-width:500px){
+    .yc-row-head{flex-wrap:nowrap; align-items:center;}
+    .yc-state{display:contents;}
+    .yc-over::before{content:'· ';}
+    .yc-over{flex:1 1 auto; min-width:0;}
+  }
   .yc-name{display:flex; align-items:center; gap:7px; font-weight:700; font-size:14.5px; color:var(--ink);}
   .yc-dot{width:9px; height:9px; border-radius:50%; display:inline-block; flex-shrink:0;}
   .yc-dot.my, .yc-fill.my, .yc-seg.my{background:var(--checkpoint);}
@@ -252,30 +266,27 @@
   .yc-badge.hit{font-weight:700;}
   .yc-badge.hit.my{color:var(--checkpoint); border-color:var(--checkpoint-soft); background:rgba(62,98,89,0.09);}
   .yc-badge.hit.sg{color:var(--sg-blue); border-color:var(--sg-blue-soft); background:rgba(47,74,120,0.08);}
-  .yc-badge.imp{border-style:dashed; color:var(--grey-text);}
   .yc-track{position:relative; padding:3px 0;}
   .yc-bar{display:flex; height:10px; border-radius:5px; overflow:hidden; background:var(--paper-dark);}
   .yc-fill, .yc-proj{height:100%;}
   .yc-proj.my{background:repeating-linear-gradient(135deg, rgba(62,98,89,0.5) 0 2px, transparent 2px 5px);}
   .yc-proj.sg{background:repeating-linear-gradient(135deg, rgba(47,74,120,0.5) 0 2px, transparent 2px 5px);}
   .yc-tick{position:absolute; top:0; bottom:0; width:2px; margin-left:-1px; background:var(--ink); border-radius:1px;}
-  .yc-row-foot{display:flex; justify-content:space-between; gap:4px 10px; flex-wrap:wrap; margin-top:5px;
-    font-family:var(--mono); font-size:12px; color:var(--grey-text);}
-  .yc-n{font-size:17px; color:var(--ink);}
+  .yc-n{font-size:17px; color:var(--ink); font-family:var(--mono);}
   .yc-muted{color:#8A836C; font-size:11.5px;}
-  .yc-other{display:flex; flex-wrap:wrap; align-items:center; gap:8px; padding-top:12px; margin-bottom:12px;
+  .yc-other{display:flex; flex-wrap:wrap; align-items:center; gap:8px; padding-top:12px; margin-bottom:0;
     border-top:1px dashed var(--gold-line);}
   .yc-other-label{font-family:var(--mono); font-size:12px; color:var(--grey-text);}
   .yc-other-label b{color:var(--ink);}
   .yc-chip{display:inline-flex; align-items:center; gap:6px; font-size:12.5px; padding:3px 9px;
     border:1px solid var(--gold-line); border-radius:6px; background:#fff; color:var(--ink);}
   .yc-chip i{width:8px; height:8px; border-radius:50%; display:inline-block;}
-  .yc-strip{display:flex; height:6px; border-radius:3px; overflow:hidden; background:var(--paper-dark);}
-  .yc-strip .yc-seg{height:100%;}
-  .yc-strip .yc-seg.other{background:#8B8368;}
-  .yc-strip .yc-seg.proj{background:repeating-linear-gradient(135deg, rgba(90,86,72,0.45) 0 2px, transparent 2px 5px);}
-  .yc-strip-cap{display:flex; justify-content:space-between; gap:4px 10px; flex-wrap:wrap; margin-top:6px;
-    font-family:var(--mono); font-size:11px; color:#8A836C;}
+
+  @media (max-width:600px){
+    .panel-year{padding:16px 14px;}
+    .panel-year .year-card{border:none; box-shadow:none; background:transparent; margin-bottom:0; overflow:visible;}
+    .panel-year .yc{padding:4px 0 0;}
+  }
 
   /* trip log table */
   table{width:100%; border-collapse:collapse; font-size:13px;}
@@ -951,7 +962,7 @@
 
 <main>
 
-  <section class="panel">
+  <section class="panel panel-year">
     <div class="panel-title" style="justify-content:space-between; flex-wrap:wrap; gap:10px;">
       <span style="display:flex; align-items:center; gap:8px;"><span class="tick"></span>年度天数总览</span>
       <select id="overviewYearSelect" style="min-width:100px;"></select>
@@ -1067,7 +1078,7 @@
 <div class="version-badge" id="versionBadge"></div>
 
 <div class="footer-note">
-  说明：天数计算采用「出发日与返回日均计为整天」的简化方式，实际税务规则（例如马来西亚 182 天 / 新加坡 183 天居民门槛）可能有不同的计算细节。门槛是否达标只按截至今天已发生的天数判断；年度卡中斜纹部分是尚未发生的日子，仅按已录入的计划和常驻地估算，不计入达标判断；没有记录的日子一律计入常驻地。以上门槛数字仅供参考，不构成税务意见，具体请以马来西亚内陆税收局（LHDN）、新加坡税务局（IRAS）规定或专业税务顾问意见为准。
+  说明：天数计算采用「出发日与返回日均计为整天」的简化方式，实际税务规则（例如马来西亚 182 天 / 新加坡 183 天居民门槛）可能有不同的计算细节。门槛是否达标只按截至今天已发生的天数判断；年度卡进度条上的斜纹是尚未发生的日子，仅按已录入的计划和常驻地估算，不计入达标判断；没有记录的日子一律计入常驻地。以上门槛数字仅供参考，不构成税务意见，具体请以马来西亚内陆税收局（LHDN）、新加坡税务局（IRAS）规定或专业税务顾问意见为准。
 </div>
 
 <!--

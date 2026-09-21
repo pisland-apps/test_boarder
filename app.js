@@ -42,7 +42,7 @@ import * as pdfjsLib from './lib/pdf.min.mjs';
   // (Ctrl/Cmd+Shift+R) or clear the Service Worker/cache in devtools,
   // rather than assuming the deploy didn't work.
   // ---------------------------------------------------------------------
-  const APP_VERSION = 'v25';
+  const APP_VERSION = 'v26';
   const APP_VERSION_DATE = '2026-09-20';
 
   // Set immediately (not gated behind unlock) so the badge is visible on
@@ -2516,12 +2516,28 @@ import * as pdfjsLib from './lib/pdf.min.mjs';
   });
   document.getElementById('printToggleBtn').addEventListener('click', ()=>{
     const section = document.getElementById('printSection');
-    section.style.display = (section.style.display === 'none') ? 'block' : 'none';
+    const willShow = section.style.display === 'none';
+    section.style.display = willShow ? 'block' : 'none';
+    document.getElementById('printToggleBtn').textContent = willShow ? '收起' : '🖨️ 打印';
   });
   document.getElementById('archiveToggleBtn').addEventListener('click', ()=>{
     const section = document.getElementById('archiveSection');
-    section.style.display = (section.style.display === 'none') ? 'block' : 'none';
+    const willShow = section.style.display === 'none';
+    section.style.display = willShow ? 'block' : 'none';
+    document.getElementById('archiveToggleBtn').textContent = willShow ? '收起' : '归档…';
   });
+
+  // The red plaintext warning only appears when encryption is actually off.
+  (function wireExportEncryptHint(){
+    const toggle = document.getElementById('exportEncryptToggle');
+    const hint = document.getElementById('exportEncryptHint');
+    function sync(){
+      if(toggle.checked){ hint.textContent = '导出时会要求设置备份密码'; hint.classList.remove('warn'); }
+      else { hint.textContent = '⚠ 明文备份没有密码保护，请妥善保管'; hint.classList.add('warn'); }
+    }
+    toggle.addEventListener('change', sync);
+    sync();
+  })();
 
   function showStorageModeNote(){
     const note = document.getElementById('storageModeNote');
@@ -2725,13 +2741,13 @@ import * as pdfjsLib from './lib/pdf.min.mjs';
     if(!btn) return;
     const supported = await biometricPlatformAvailable();
     if(!supported){
-      btn.textContent = '指纹/Face ID 解锁（此设备不支持）';
+      btn.textContent = '不支持';
       btn.disabled = true;
       return;
     }
     btn.disabled = false;
     const rec = idbDB ? await idbGet(BIO_META_KEY).catch(()=>null) : null;
-    btn.textContent = rec ? '🔓 关闭指纹/Face ID 解锁' : '👆 启用指纹/Face ID 解锁';
+    btn.textContent = rec ? '关闭' : '启用';
     btn.dataset.enabled = rec ? '1' : '0';
   }
 
@@ -2892,7 +2908,7 @@ import * as pdfjsLib from './lib/pdf.min.mjs';
     const btn = document.getElementById('infoNoteBtn');
     const willShow = box.style.display === 'none';
     box.style.display = willShow ? 'block' : 'none';
-    btn.textContent = willShow ? '收起说明' : 'ℹ️ 说明';
+    btn.textContent = willShow ? '收起' : '查看';
   });
 
   (async function init(){

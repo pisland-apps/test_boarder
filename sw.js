@@ -7,7 +7,7 @@
 // near the top of app.js (the small version badge shown bottom-right,
 // even on the lock screen) — they live in different files. Bump BOTH by
 // hand on every deploy. See the deploy checklist in README.md.
-const CACHE_NAME = 'border-day-ledger-cache-v25';
+const CACHE_NAME = 'border-day-ledger-cache-v26';
 
 // './index.html' is deliberately NOT in this list. Cloudflare Pages
 // 301/308-redirects /index.html -> / (it strips the .html extension), so

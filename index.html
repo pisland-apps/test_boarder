@@ -687,6 +687,41 @@
   .sidebar-section-label:first-child{margin-top:0;}
   .sidebar-content .panel{margin-bottom:0;}
 
+  /* ================= SETTINGS DRAWER v26: grouped list =================
+     One card per group; every setting is a row separated by a hairline:
+     label (+ small hint) on the left, control on the right. Rows holding two
+     buttons or a wide control ("stack") put the control on its own line. */
+  .set-group-label{
+    font-family:var(--mono); font-size:11px; letter-spacing:0.12em; font-weight:700;
+    color:var(--stamp); margin:20px 2px 8px;
+  }
+  .set-group-label:first-child{margin-top:0;}
+  .set-card{background:#fff; border:1px solid var(--gold-line); border-radius:8px; box-shadow:var(--card-shadow); overflow:hidden;}
+  .set-row{display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 14px; min-height:54px; border-top:1px solid var(--paper-dark);}
+  .set-row:first-child{border-top:none;}
+  .set-row.stack{flex-direction:column; align-items:stretch; justify-content:flex-start; gap:8px;}
+  .set-text{min-width:0; flex:1 1 auto;}
+  .set-label{font-size:14px; font-weight:600; color:var(--ink);}
+  .set-label label{font-size:inherit; color:inherit; letter-spacing:0;}
+  .set-label.set-warn{color:var(--stamp);}
+  .set-hint{font-size:11.5px; line-height:1.55; color:var(--grey-text); margin-top:2px;}
+  .set-hint.warn{color:var(--stamp);}
+  .set-meter-text{font-family:var(--mono); font-size:12px; line-height:1.5; color:var(--grey-text);}
+  .set-btn-grid{display:grid; grid-template-columns:1fr 1fr; gap:8px;}
+  .btn.sm{padding:7px 12px; font-size:13px; min-height:36px; white-space:nowrap; flex-shrink:0;}
+  .set-btn-grid .btn.sm{width:100%; padding-left:6px; padding-right:6px;}
+  .btn.ghost.danger{border-color:var(--stamp-soft);}
+  .btn.ghost:disabled{opacity:0.55; cursor:default; border-color:var(--gold-line); color:var(--grey-text);}
+  .set-row select{width:100%; min-width:0; box-sizing:border-box;}
+  .set-note{padding:12px 14px; border-top:1px solid var(--paper-dark); background:#FBF9F2; font-size:12px; line-height:1.7; color:var(--grey-text);}
+  .set-sub{padding:12px 14px 14px; border-top:1px solid var(--paper-dark); background:#FBF9F2;}
+  .set-sub > label{display:block; font-size:12px; color:var(--grey-text); margin-bottom:6px;}
+  .set-sub .set-hint{margin-top:8px;}
+  .set-inline{display:flex; gap:8px; align-items:center;}
+  .set-inline select{flex:1 1 90px; min-width:0;}
+  .set-status{height:auto; padding:8px 14px; border-top:1px solid var(--paper-dark); font-size:12px; line-height:1.5;}
+  .set-status:empty{display:none;}
+
   .app-body-layout{display:block;}
 
   @media (min-width:768px){
@@ -853,115 +888,103 @@
   </div>
   <div class="sidebar-content">
 
-  <div class="sidebar-section-label">基础设置</div>
-  <section class="panel">
-    <div class="panel-title"><span class="tick"></span>基础设置</div>
-    <div class="settings-row">
-      <div class="field">
-        <label for="baseLocation">你的常驻地（未记录行程的日子将计入此地）</label>
-        <select id="baseLocation">
-          <option value="SG">新加坡（工作/居住地）</option>
-          <option value="MY">马来西亚</option>
-        </select>
+  <div class="set-group-label">基础设置</div>
+  <section class="set-card">
+    <div class="set-row stack">
+      <div class="set-text">
+        <div class="set-label"><label for="baseLocation">常驻地</label></div>
+        <div class="set-hint">没有记录行程的日子，会计入这里</div>
       </div>
-      <div class="field">
-        <label>&nbsp;</label>
-        <div style="display:flex; gap:6px;">
-          <button type="button" class="btn ghost" id="changePassBtn">更改密码</button>
-        </div>
-      </div>
-      <div class="field">
-        <label>&nbsp;</label>
-        <button type="button" class="btn ghost" id="bioToggleBtn">指纹 / Face ID 解锁</button>
-      </div>
-      <div class="field">
-        <label>&nbsp;</label>
-        <button type="button" class="btn ghost" id="infoNoteBtn">ℹ️ 说明</button>
-      </div>
-      <div class="save-status" id="saveStatus"></div>
+      <select id="baseLocation">
+        <option value="SG">新加坡（工作/居住地）</option>
+        <option value="MY">马来西亚</option>
+      </select>
     </div>
-    <div id="infoNoteBox" style="font-size:11.5px; color:var(--grey-text); margin-top:10px; display:none;">
+    <div class="set-row">
+      <div class="set-text"><div class="set-label">密码</div></div>
+      <button type="button" class="btn ghost sm" id="changePassBtn">更改密码</button>
+    </div>
+    <div class="set-row">
+      <div class="set-text"><div class="set-label">指纹 / Face ID 解锁</div></div>
+      <button type="button" class="btn ghost sm" id="bioToggleBtn">…</button>
+    </div>
+    <div class="set-row">
+      <div class="set-text"><div class="set-label">安全与存储说明</div></div>
+      <button type="button" class="btn ghost sm" id="infoNoteBtn">查看</button>
+    </div>
+    <div id="infoNoteBox" class="set-note" style="display:none;">
       <div id="storageModeNote" style="display:none;"></div>
       <div style="margin-top:8px;">
         🔒 本工具所有数据均使用密码派生的密钥加密保存（PBKDF2 + AES-GCM）。密码仅保存在本次会话的内存中，不会被存储。指纹/Face ID 解锁只是密码的便捷入口（需要 iOS 18+ / 较新版 Android Chrome）——换设备或清除浏览器数据后，仍需用密码解锁。
       </div>
     </div>
+    <div class="save-status set-status" id="saveStatus"></div>
   </section>
 
-  <div class="sidebar-section-label">导出与打印</div>
-  <section class="panel">
-    <div class="panel-title"><span class="tick"></span>导出与打印</div>
-    <div class="settings-row">
-      <div class="field">
-        <label for="exportBtn">备份数据</label>
-        <div style="display:flex; gap:6px;">
-          <button type="button" class="btn ghost" id="exportBtn">导出为 JSON</button>
-          <button type="button" class="btn ghost" id="exportZipBtn">导出为 ZIP</button>
-        </div>
-      </div>
-      <div class="field">
-        <label for="importBtn">恢复数据</label>
-        <div style="display:flex; gap:6px;">
-          <button type="button" class="btn ghost" id="importBtn">导入 JSON</button>
-          <button type="button" class="btn ghost" id="importZipBtn">导入 ZIP</button>
-        </div>
-        <input type="file" id="importFile" accept="application/json,.json" style="display:none;">
-        <input type="file" id="importZipFile" accept=".zip,application/zip" style="display:none;">
-      </div>
-      <div class="field" style="min-width:200px;">
-        <label for="exportEncryptToggle">导出加密</label>
-        <div style="display:flex; align-items:center; gap:8px; padding-top:6px;">
-          <label class="switch">
-            <input type="checkbox" id="exportEncryptToggle" checked>
-            <span class="switch-slider"></span>
-          </label>
-          <span style="font-size:12px; color:var(--grey-text);">开启后导出文件需设置备份密码</span>
-        </div>
-        <div style="font-size:11px; color:var(--stamp); margin-top:2px;">明文备份不含密码保护，请妥善保管</div>
-      </div>
-      <div class="field">
-        <label>&nbsp;</label>
-        <button type="button" class="btn" id="printToggleBtn">🖨️ 打印</button>
+  <div class="set-group-label">导出与打印</div>
+  <section class="set-card">
+    <div class="set-row stack">
+      <div class="set-label">备份数据</div>
+      <div class="set-btn-grid">
+        <button type="button" class="btn ghost sm" id="exportBtn">导出为 JSON</button>
+        <button type="button" class="btn ghost sm" id="exportZipBtn">导出为 ZIP</button>
       </div>
     </div>
-    <div id="printSection" style="display:none; margin-top:12px; padding-top:12px; border-top:1px dashed var(--gold-line);">
-      <div class="settings-row">
-        <div class="field">
-          <label for="printYearSelect">选择年份</label>
-          <select id="printYearSelect"></select>
-        </div>
-        <div class="field">
-          <label>&nbsp;</label>
-          <button type="button" class="btn" id="printBtn">打印该年度记录（英文报告）</button>
-        </div>
+    <div class="set-row stack">
+      <div class="set-label">恢复数据</div>
+      <div class="set-btn-grid">
+        <button type="button" class="btn ghost sm" id="importBtn">导入 JSON</button>
+        <button type="button" class="btn ghost sm" id="importZipBtn">导入 ZIP</button>
+      </div>
+      <input type="file" id="importFile" accept="application/json,.json" style="display:none;">
+      <input type="file" id="importZipFile" accept=".zip,application/zip" style="display:none;">
+    </div>
+    <div class="set-row">
+      <div class="set-text">
+        <div class="set-label"><label for="exportEncryptToggle">导出加密</label></div>
+        <div class="set-hint" id="exportEncryptHint">导出时会要求设置备份密码</div>
+      </div>
+      <label class="switch">
+        <input type="checkbox" id="exportEncryptToggle" checked>
+        <span class="switch-slider"></span>
+      </label>
+    </div>
+    <div class="set-row">
+      <div class="set-text">
+        <div class="set-label">打印</div>
+        <div class="set-hint">按年份生成英文报告</div>
+      </div>
+      <button type="button" class="btn ghost sm" id="printToggleBtn">🖨️ 打印</button>
+    </div>
+    <div id="printSection" class="set-sub" style="display:none;">
+      <label for="printYearSelect">选择年份</label>
+      <div class="set-inline">
+        <select id="printYearSelect"></select>
+        <button type="button" class="btn sm" id="printBtn">打印英文报告</button>
       </div>
     </div>
-    <div id="storageMeterWrap" style="margin-top:16px; padding-top:14px; border-top:1px dashed var(--gold-line);">
-      <div id="storageMeterText" style="font-family:var(--mono); font-size:12px; color:var(--grey-text); margin-bottom:6px;">存储用量计算中…</div>
+    <div class="set-row stack" id="storageMeterWrap">
+      <div class="set-label">存储用量</div>
+      <div id="storageMeterText" class="set-meter-text">存储用量计算中…</div>
       <div class="storage-bar" id="storageBar" style="display:none;">
         <div class="storage-bar-fill" id="storageBarFill" style="width:0%;"></div>
       </div>
-      <div id="storageMeterSub" style="font-family:var(--mono); font-size:11px; color:var(--grey-text); margin-top:4px;"></div>
+      <div id="storageMeterSub" class="set-hint" style="margin-top:0;"></div>
     </div>
-    <div style="margin-top:16px; padding-top:14px; border-top:1px dashed var(--stamp-soft);">
-      <button type="button" class="btn ghost" id="archiveToggleBtn" style="border-color:var(--stamp-soft); color:var(--stamp); font-weight:600;">
-        空间不够用？按年归档
-      </button>
-      <div id="archiveSection" style="display:none; margin-top:12px;">
-        <div class="settings-row">
-          <div class="field">
-            <label for="archiveYearSelect">选择要归档的年份</label>
-            <select id="archiveYearSelect"></select>
-          </div>
-          <div class="field">
-            <label>&nbsp;</label>
-            <button type="button" class="btn ghost" id="archiveBtn" style="border-color:var(--stamp-soft); color:var(--stamp);">导出该年并删除</button>
-          </div>
-        </div>
-        <div style="font-size:11px; color:var(--grey-text); margin-top:6px;">
-          会先下载该年份的完整备份（含图片），确认保存好后再从本地删除释放空间。以后需要可以用上面「导入 JSON」拿回来。
-        </div>
+    <div class="set-row">
+      <div class="set-text">
+        <div class="set-label set-warn">按年归档</div>
+        <div class="set-hint">空间不够用时：先下载该年备份，再从本机删除</div>
       </div>
+      <button type="button" class="btn ghost sm danger" id="archiveToggleBtn">归档…</button>
+    </div>
+    <div id="archiveSection" class="set-sub" style="display:none;">
+      <label for="archiveYearSelect">选择要归档的年份</label>
+      <div class="set-inline">
+        <select id="archiveYearSelect"></select>
+        <button type="button" class="btn ghost sm danger" id="archiveBtn">导出该年并删除</button>
+      </div>
+      <div class="set-hint">会先下载该年份的完整备份（含图片），确认保存好后再从本地删除释放空间。以后需要，可在「恢复数据」里导入 JSON 拿回来。</div>
     </div>
   </section>
 

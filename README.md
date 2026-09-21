@@ -229,7 +229,19 @@ then 路线 / 备注 / 附件 only when present. The mobile rules sit AFTER the 
 Delete now asks for confirmation (it also deletes attachments, no undo).
 Year card: dropped the word 已发生 from the "其他国家" label.
 
+## v26: settings drawer redesigned as grouped lists
+
+The drawer had two "panels" that repeated their own headings, `<label>&nbsp;</label>`
+spacers that produced big blank gaps, a disabled button carrying a long
+"不支持" sentence, and a red plaintext warning that was always on. Now: two
+cards (基础设置 / 导出与打印), one row per setting separated by hairlines —
+label (+hint) left, control right (`.set-row`); rows with paired buttons or a
+select use `.set-row.stack` (control on its own line). All element ids are
+unchanged. Button captions got shorter (指纹 button: 启用 / 关闭 / 不支持;
+说明: 查看 / 收起; print + archive toggles: … / 收起). The plaintext warning is
+shown only while 导出加密 is off. `#saveStatus` is hidden while empty.
+
 ## Current versions
 
-- `APP_VERSION`: `v25` (`app.js`)
-- `CACHE_NAME`: `border-day-ledger-cache-v25` (`sw.js`)
+- `APP_VERSION`: `v26` (`app.js`)
+- `CACHE_NAME`: `border-day-ledger-cache-v26` (`sw.js`)

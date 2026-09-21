@@ -42,7 +42,7 @@ import * as pdfjsLib from './lib/pdf.min.mjs';
   // (Ctrl/Cmd+Shift+R) or clear the Service Worker/cache in devtools,
   // rather than assuming the deploy didn't work.
   // ---------------------------------------------------------------------
-  const APP_VERSION = 'v24';
+  const APP_VERSION = 'v25';
   const APP_VERSION_DATE = '2026-09-20';
 
   // Set immediately (not gated behind unlock) so the badge is visible on
@@ -1484,6 +1484,7 @@ import * as pdfjsLib from './lib/pdf.min.mjs';
   }
 
   async function deleteTrip(id){
+    if(!confirm('删除这条行程记录？附件也会一并删除，无法恢复。')) return;
     if(editingId === id) closeTripModal();
     const t = trips.find(x => x.id === id);
     trips = trips.filter(x => x.id !== id);
@@ -1714,7 +1715,7 @@ import * as pdfjsLib from './lib/pdf.min.mjs';
         .sort((a, b) => b[1] - a[1])
         .map(([name, days]) => `<span class="yc-chip"><i style="background:${ycChipColor(name)}"></i>${escapeHtml(name)} <b>${days}</b></span>`)
         .join('');
-      other = `<div class="yc-other"><span class="yc-other-label">其他国家 · 已发生合计 <b>${oe}</b> 天</span>${chips}${op > 0 ? `<span class="yc-muted">另有计划中 ${op} 天</span>` : ''}</div>`;
+      other = `<div class="yc-other"><span class="yc-other-label">其他国家 · 合计 <b>${oe}</b> 天</span>${chips}${op > 0 ? `<span class="yc-muted">另有计划中 ${op} 天</span>` : ''}</div>`;
     }
 
     return `<div class="year-card yc"><div class="yc-sub">${sub}</div>${rows}${other}</div>`;
@@ -1781,20 +1782,21 @@ import * as pdfjsLib from './lib/pdf.min.mjs';
     const sorted = [...trips].sort((a,b)=> new Date(b.start) - new Date(a.start));
     const rows = sorted.map(t=>{
       const d = daysInclusive(t.start, t.end);
+      const hasImg = t.imageIds && t.imageIds.length > 0;
       return `
         <tr>
-          <td data-label="目的地"><span class="tag ${destTagClass(t)}">${escapeHtml(destLabel(t))}</span></td>
-          <td data-label="出发">${t.start}</td>
-          <td data-label="返回">${t.end}</td>
-          <td data-label="天数">${d} 天</td>
-          <td data-label="交通方式"><span class="transport-tag" title="${transportLabel(t)}">${transportIcon(t)}</span></td>
-          <td data-label="路线">${t.route ? `<span class="route-text">${escapeHtml(t.route)}</span>` : '—'}</td>
-          <td data-label="备注">${t.note ? escapeHtml(t.note) : '—'}</td>
-          <td data-label="图片">${(t.imageIds && t.imageIds.length > 0) ? `<button class="view-image-link" data-action="viewImage" data-trip-id="${escapeHtml(t.id)}">查看图片 (${t.imageIds.length})</button>` : '—'}</td>
-          <td data-label="操作">
+          <td class="c-dest" data-label="目的地"><span class="tag ${destTagClass(t)}">${escapeHtml(destLabel(t))}</span></td>
+          <td class="c-start" data-label="出发">${t.start}</td>
+          <td class="c-end" data-label="返回">${t.end}</td>
+          <td class="c-days" data-label="天数">${d} 天</td>
+          <td class="c-mode" data-label="交通方式"><span class="transport-tag" title="${transportLabel(t)}">${transportIcon(t)}</span></td>
+          <td class="c-route${t.route ? '' : ' empty'}" data-label="路线">${t.route ? `<span class="route-text">${escapeHtml(t.route)}</span>` : '—'}</td>
+          <td class="c-note${t.note ? '' : ' empty'}" data-label="备注"><span>${t.note ? escapeHtml(t.note) : '—'}</span></td>
+          <td class="c-img${hasImg ? '' : ' empty'}" data-label="图片">${hasImg ? `<button class="view-image-link" data-action="viewImage" data-trip-id="${escapeHtml(t.id)}">查看图片 (${t.imageIds.length})</button>` : '—'}</td>
+          <td class="c-act" data-label="操作">
             <div class="row-actions">
-              <button data-action="editTrip" data-trip-id="${escapeHtml(t.id)}" title="编辑">✏️</button>
-              <button data-action="removeTrip" data-trip-id="${escapeHtml(t.id)}" title="删除">🗑️</button>
+              <button data-action="editTrip" data-trip-id="${escapeHtml(t.id)}" title="编辑" aria-label="编辑">✏️</button>
+              <button data-action="removeTrip" data-trip-id="${escapeHtml(t.id)}" title="删除" aria-label="删除">🗑️</button>
             </div>
           </td>
         </tr>

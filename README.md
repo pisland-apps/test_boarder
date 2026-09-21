@@ -217,7 +217,19 @@ inner card frame is flattened (`.panel-year`) to win back width. The hatched
 part of each bar (not-yet-elapsed days) stays, with no legend besides the
 footer note.
 
+## v25: trip log as compact cards on phones
+
+`renderTripTable()` now tags each cell (`c-dest`, `c-start`, `c-end`, `c-days`,
+`c-mode`, `c-route`, `c-note`, `c-img`, `c-act`) and marks empty optional cells
+`.empty`. Desktop is still a table (dates/“查看图片” no longer wrap; the wrapper
+scrolls sideways if it must). At ≤600px each `<tr>` becomes a grid card: line 1
+destination + transport + edit/delete (40px targets), line 2 `start → end · N 天`,
+then 路线 / 备注 / 附件 only when present. The mobile rules sit AFTER the generic
+`table,td{display:block}` rule and are scoped by `#tripTableWrap` to win.
+Delete now asks for confirmation (it also deletes attachments, no undo).
+Year card: dropped the word 已发生 from the "其他国家" label.
+
 ## Current versions
 
-- `APP_VERSION`: `v24` (`app.js`)
-- `CACHE_NAME`: `border-day-ledger-cache-v24` (`sw.js`)
+- `APP_VERSION`: `v25` (`app.js`)
+- `CACHE_NAME`: `border-day-ledger-cache-v25` (`sw.js`)

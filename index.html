@@ -322,6 +322,10 @@
     transition:background 0.15s;
   }
   .row-actions button:hover{background:var(--paper-dark);}
+  /* desktop: never break a date or "查看图片 (1)" across two lines; let the
+     table scroll sideways instead of squeezing */
+  .c-start, .c-end, .c-days, .c-img{white-space:nowrap;}
+  #tripTableWrap{overflow-x:auto; container:trips / inline-size;}
 
   .image-field{display:flex; flex-direction:column; gap:6px;}
   .image-thumb-list{display:flex; flex-wrap:wrap; gap:8px; margin-top:4px;}
@@ -564,6 +568,63 @@
     tr{border-bottom:1px solid var(--gold-line); padding:8px 0;}
     td{border:none; padding:3px 0; display:flex; justify-content:space-between; gap:10px;}
     td::before{content:attr(data-label); font-family:var(--mono); font-size:10.5px; color:var(--grey-text); text-transform:uppercase;}
+  }
+
+  /* ===== Trip log on phones (v25): one compact card per trip =====
+     line 1: destination + transport ......... edit / delete
+     line 2: start → end  ·  N 天
+     then only the optional lines that have content: 路线 / 备注 / 附件 */
+  /* Container query on the list itself (not the viewport): a desktop window
+     with the settings rail open leaves only ~600px for the table, and the
+     edit/delete column would be pushed off-screen. */
+  @container trips (max-width:760px){
+    #tripTableWrap table, #tripTableWrap tbody{display:block;}
+    #tripTableWrap thead{display:none;}
+    #tripTableWrap tr{
+      display:grid; grid-template-columns:auto auto auto 1fr; column-gap:8px; row-gap:8px;
+      align-items:center; padding:12px; margin-bottom:10px;
+      background:#fff; border:1px solid var(--gold-line); border-radius:8px;
+    }
+    #tripTableWrap tr:last-child{margin-bottom:0;}
+    #tripTableWrap td{display:block; padding:0; border:none; min-width:0;}
+    #tripTableWrap td::before{display:none;}
+    #tripTableWrap td.empty{display:none;}
+
+    #tripTableWrap .c-dest{grid-column:1; grid-row:1;}
+    #tripTableWrap .c-mode{grid-column:2; grid-row:1;}
+    #tripTableWrap .c-act{grid-column:4; grid-row:1; justify-self:end; margin:-6px -8px -6px 0;}
+    #tripTableWrap .c-start{grid-column:1; grid-row:2;}
+    #tripTableWrap .c-end{grid-column:2; grid-row:2;}
+    #tripTableWrap .c-end::before{display:inline; content:'→ '; color:var(--grey-text);}
+    #tripTableWrap .c-days{grid-column:3; grid-row:2;}
+    #tripTableWrap .c-start, #tripTableWrap .c-end{font-family:var(--mono); font-size:12.5px; color:var(--ink);}
+    #tripTableWrap .c-days{font-weight:700; color:var(--ink);}
+    #tripTableWrap .tag{font-size:12px; padding:3px 9px;}
+
+    #tripTableWrap .c-route, #tripTableWrap .c-note, #tripTableWrap .c-img{grid-column:1 / -1;}
+    #tripTableWrap .c-route, #tripTableWrap .c-note{display:flex; justify-content:flex-start; gap:10px; align-items:baseline;}
+    #tripTableWrap .c-route::before, #tripTableWrap .c-note::before{
+      content:attr(data-label); display:block; flex:0 0 2.2em; font-family:var(--sans); font-size:11px; color:var(--grey-text); text-transform:none;
+    }
+    #tripTableWrap .c-note span{font-size:13px; color:var(--ink); min-width:0; overflow-wrap:anywhere;}
+    #tripTableWrap .route-text{overflow-wrap:anywhere;}
+
+    #tripTableWrap .c-img .view-image-link{
+      display:inline-flex; align-items:center; gap:6px; min-height:36px; padding:6px 14px;
+      font-size:13px; text-decoration:none; color:var(--checkpoint);
+      border:1px solid var(--checkpoint-soft); border-radius:999px; background:rgba(62,98,89,0.06);
+    }
+    #tripTableWrap .c-img .view-image-link::before{content:'📎';}
+
+    #tripTableWrap .row-actions{gap:2px;}
+  }
+  @container trips (max-width:250px){
+    #tripTableWrap tr{column-gap:6px;}
+    #tripTableWrap .c-start, #tripTableWrap .c-end{font-size:11px;}
+    #tripTableWrap .c-end::before{content:'→';}
+  }
+  @container trips (max-width:760px){
+    #tripTableWrap .row-actions button{width:40px; height:40px; font-size:18px; border-radius:8px;}
   }
 
   /* ================= TOP BAR (hamburger + title + Save/Lock) ================= */
